@@ -1888,11 +1888,19 @@ lkpi_iv_key_set(struct ieee80211vap *vap, const struct ieee80211_key *k)
 		return (0);
 	}
 
+	lvif = VAP_TO_LVIF(vap);
+	vif = LVIF_TO_VIF(lvif);
+
 	if (lsta->kc[k->wk_keyix] != NULL) {
-		IMPROVE("Still in firmware? Del first. Can we assert this cannot happen?");
-		ic_printf(ic, "%s: sta %6D found with key information\n",
-		    __func__, sta->addr, ":");
 		kc = lsta->kc[k->wk_keyix];
+		/* The driver may retain kc until DISABLE_KEY completes. */
+		error = lkpi_80211_mo_set_key(hw, DISABLE_KEY, vif, sta, kc);
+		if (error != 0) {
+			ic_printf(ic, "%s: failed to remove previous key: %d\n",
+			    __func__, error);
+			ieee80211_free_node(ni);
+			return (0);
+		}
 		lsta->kc[k->wk_keyix] = NULL;
 		free(kc, M_LKPI80211);
 		kc = NULL;	/* safeguard */
@@ -1946,8 +1954,6 @@ lkpi_iv_key_set(struct ieee80211vap *vap, const struct ieee80211_key *k)
 		    kc->keylen, kc->flags, IEEE80211_KEY_FLAG_BITS);
 #endif
 
-	lvif = VAP_TO_LVIF(vap);
-	vif = LVIF_TO_VIF(lvif);
 	error = lkpi_80211_mo_set_key(hw, SET_KEY, vif, sta, kc);
 	if (error != 0) {
 		ic_printf(ic, "%d %lu %s: set_key cmd %d(%s) for sta %6D failed: %d\n",
