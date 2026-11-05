@@ -1633,6 +1633,53 @@ linuxkpi_ieee80211_get_channel(struct wiphy *wiphy, uint32_t freq)
 }
 
 #ifdef LKPI_80211_HW_CRYPTO
+/*
+ * Remove prepared packets which still refer to a key being retired.  Callers
+ * hold wiphy and a node reference; native TX preparation cannot add packets
+ * with this key while we walk the queues.  Already-dequeued packets remain
+ * the driver's responsibility when DISABLE_KEY completes.
+ */
+static u_int
+lkpi_discard_key_txq(struct ieee80211_hw *hw, struct lkpi_sta *lsta,
+    struct ieee80211_key_conf *kc)
+{
+	struct ieee80211_tx_info *info;
+	struct ieee80211_sta *sta;
+	struct lkpi_txq *ltxq;
+	struct sk_buff *discard, *skb, *tmp;
+	u_int count, tid;
+
+	lockdep_assert_wiphy(hw->wiphy);
+	sta = LSTA_TO_STA(lsta);
+	discard = NULL;
+	count = 0;
+	for (tid = 0; tid < nitems(sta->txq); tid++) {
+		if (sta->txq[tid] == NULL)
+			continue;
+		ltxq = TXQ_TO_LTXQ(sta->txq[tid]);
+		LKPI_80211_LTXQ_LOCK(ltxq);
+		skb_queue_walk_safe(&ltxq->skbq, skb, tmp) {
+			info = IEEE80211_SKB_CB(skb);
+			if (info->control.hw_key != kc)
+				continue;
+			skb_unlink(skb, &ltxq->skbq);
+			skb->next = discard;
+			discard = skb;
+			count++;
+		}
+		LKPI_80211_LTXQ_UNLOCK(ltxq);
+	}
+
+	/* Completion may release node references; do it outside TXQ locks. */
+	while (discard != NULL) {
+		skb = discard;
+		discard = skb->next;
+		skb->next = NULL;
+		ieee80211_free_txskb(hw, skb);
+	}
+	return (count);
+}
+
 static int
 lkpi_sta_del_keys(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
     struct lkpi_sta *lsta)
@@ -1672,6 +1719,7 @@ lkpi_sta_del_keys(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			    kc->keyidx, kc->hw_key_idx, kc->flags, IEEE80211_KEY_FLAG_BITS);
 #endif
 
+		(void)lkpi_discard_key_txq(hw, lsta, kc);
 		err = lkpi_80211_mo_set_key(hw, DISABLE_KEY, vif,
 		    LSTA_TO_STA(lsta), kc);
 		if (err != 0) {
@@ -1795,6 +1843,7 @@ lkpi_iv_key_delete(struct ieee80211vap *vap, const struct ieee80211_key *k)
 		    kc->keyidx, kc->hw_key_idx, kc->flags, IEEE80211_KEY_FLAG_BITS);
 #endif
 
+	(void)lkpi_discard_key_txq(hw, lsta, kc);
 	error = lkpi_80211_mo_set_key(hw, DISABLE_KEY, vif, sta, kc);
 	if (error != 0) {
 		ic_printf(ic, "%d %lu %s: set_key cmd %d(%s) for sta %6D failed: %d\n",
@@ -1893,6 +1942,7 @@ lkpi_iv_key_set(struct ieee80211vap *vap, const struct ieee80211_key *k)
 
 	if (lsta->kc[k->wk_keyix] != NULL) {
 		kc = lsta->kc[k->wk_keyix];
+		(void)lkpi_discard_key_txq(hw, lsta, kc);
 		/* The driver may retain kc until DISABLE_KEY completes. */
 		error = lkpi_80211_mo_set_key(hw, DISABLE_KEY, vif, sta, kc);
 		if (error != 0) {
