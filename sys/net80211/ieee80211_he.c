@@ -121,6 +121,74 @@ ieee80211_parse_hecap(const uint8_t *ie, size_t len,
 	return (0);
 }
 
+/* Serialize only fields whose presence is advertised by the PHY flags. */
+int
+ieee80211_encode_hecap(const struct net80211_he_cap *cap, uint8_t *ie,
+    size_t len, size_t *written)
+{
+	uint8_t encoded[3 + sizeof(cap->he_cap_elem) +
+	    sizeof(cap->he_mcs_nss_supp) + sizeof(cap->ppe_thres)];
+	const uint8_t *maps;
+	size_t n, ppe_len;
+	unsigned int i, nss, nrus, ru_mask;
+	uint8_t widths;
+
+	if (written == NULL)
+		return (EINVAL);
+	*written = 0;
+	if (cap == NULL || (ie == NULL && len != 0))
+		return (EINVAL);
+	if (!cap->has_he)
+		return (ENOTSUP);
+	/* NSS 1 must be supported in both mandatory <=80 MHz maps. */
+	maps = (const uint8_t *)&cap->he_mcs_nss_supp;
+	if ((maps[0] & 3) == IEEE80211_HE_MCS_NOT_SUPPORTED ||
+	    (maps[2] & 3) == IEEE80211_HE_MCS_NOT_SUPPORTED)
+		return (EINVAL);
+	encoded[0] = IEEE80211_ELEMID_EXTFIELD;
+	encoded[2] = IEEE80211_ELEMID_EXT_HE_CAPA;
+	memcpy(encoded + 3, &cap->he_cap_elem, sizeof(cap->he_cap_elem));
+	n = 3 + sizeof(cap->he_cap_elem);
+	memcpy(encoded + n, maps, 4);
+	n += 4;
+	widths = cap->he_cap_elem.phy_cap_info[0];
+	if (widths & IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_160MHZ_IN_5G) {
+		memcpy(encoded + n, &cap->he_mcs_nss_supp.rx_mcs_160, 4);
+		n += 4;
+	}
+	if (widths &
+	    IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_80PLUS80_MHZ_IN_5G) {
+		memcpy(encoded + n, &cap->he_mcs_nss_supp.rx_mcs_80p80, 4);
+		n += 4;
+	}
+	if (cap->he_cap_elem.phy_cap_info[6] &
+	    IEEE80211_HE_PHY_CAP6_PPE_THRESHOLD_PRESENT) {
+		nss = (cap->ppe_thres[0] & 7) + 1;
+		ru_mask = (cap->ppe_thres[0] >> 3) & 15;
+		nrus = 0;
+		for (i = 0; i < 4; i++)
+			nrus += (ru_mask >> i) & 1;
+		/* An outgoing PPE field must describe at least one RU. */
+		if (nrus == 0)
+			return (EINVAL);
+		ppe_len = (7 + nss * nrus * 6 + 7) / 8;
+		if (ppe_len > sizeof(cap->ppe_thres))
+			return (EINVAL);
+		memcpy(encoded + n, cap->ppe_thres, ppe_len);
+		n += ppe_len;
+	}
+	encoded[1] = n - 2;
+	if (ie == NULL) {
+		*written = n;
+		return (0);
+	}
+	if (len < n)
+		return (EMSGSIZE);
+	memcpy(ie, encoded, n);
+	*written = n;
+	return (0);
+}
+
 /*
  * Adapt the existing BSD VHT map intersection to HE's matching two-bit
  * encoding.  Inputs and result are host order.  Pair one endpoint's TX

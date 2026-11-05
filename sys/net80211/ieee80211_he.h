@@ -38,6 +38,14 @@
 int	ieee80211_parse_hecap(const uint8_t *, size_t,
 	    struct net80211_he_cap *);
 
+/*
+ * Encode one HE Capability IE from wire-order fields.  With ie == NULL and
+ * len == 0, return the required size only.  Input/output must not overlap.
+ * On failure, clear written and leave the destination untouched.
+ */
+int	ieee80211_encode_hecap(const struct net80211_he_cap *, uint8_t *,
+	    size_t, size_t *);
+
 /* Host-order maps; pair local TX with peer RX, or peer TX with local RX. */
 uint16_t ieee80211_he_mcs_intersect(uint16_t, uint16_t);
 bool	ieee80211_he_mcs_supports_basic(uint16_t, uint16_t);
