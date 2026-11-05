@@ -88,7 +88,8 @@ struct ieee80211_ies {
 	uint8_t	*vhtpwrenv_ie;	/* captured VHTPWRENV ie */
 	uint8_t	*apchanrep_ie;	/* captured APCHANREP ie */
 	uint8_t	*bssload_ie;	/* captured BSSLOAD ie */
-	uint8_t	*spare[4];
+	uint8_t	*hecap_ie;	/* validated HE capability in owned blob */
+	uint8_t	*spare[3];
 	/* NB: these must be the last members of this structure */
 	uint8_t	*data;		/* frame data > 802.11 header */
 	int	len;		/* data size in bytes */

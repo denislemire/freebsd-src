@@ -44,6 +44,7 @@
 
 #include <net80211/ieee80211_var.h>
 #include <net80211/ieee80211_input.h>
+#include <net80211/ieee80211_he.h>
 #ifdef IEEE80211_SUPPORT_SUPERG
 #include <net80211/ieee80211_superg.h>
 #endif
@@ -1146,6 +1147,7 @@ ieee80211_ies_init(struct ieee80211_ies *ies, const uint8_t *data, int len)
 void
 ieee80211_ies_cleanup(struct ieee80211_ies *ies)
 {
+	ies->hecap_ie = NULL;
 	if (ies->data != NULL)
 		IEEE80211_FREE(ies->data, M_80211_NODE_IE);
 }
@@ -1158,9 +1160,11 @@ ieee80211_ies_cleanup(struct ieee80211_ies *ies)
 void
 ieee80211_ies_expand(struct ieee80211_ies *ies)
 {
+	struct net80211_he_cap hecap;
 	uint8_t *ie;
 	int ielen;
 
+	ies->hecap_ie = NULL;
 	ie = ies->data;
 	ielen = ies->len;
 	while (ielen > 1) {
@@ -1170,6 +1174,7 @@ ieee80211_ies_expand(struct ieee80211_ies *ies)
 			    "ie %u len 2+%u > total len left %d\n",
 			    __func__, ies, ies->data, ies->len,
 			    ie[0], ie[1], ielen);
+			ies->hecap_ie = NULL;
 			return;
 		}
 		switch (ie[0]) {
@@ -1189,6 +1194,15 @@ ieee80211_ies_expand(struct ieee80211_ies *ies)
 			break;
 		case IEEE80211_ELEMID_RSN:
 			ies->rsn_ie = ie;
+			break;
+		case IEEE80211_ELEMID_EXTFIELD:
+			if (ie[1] >= 1 &&
+			    ie[2] == IEEE80211_ELEMID_EXT_HE_CAPA) {
+				ies->hecap_ie = NULL;
+				if (ieee80211_parse_hecap(ie, ie[1] + 2,
+				    &hecap) == 0)
+					ies->hecap_ie = ie;
+			}
 			break;
 		case IEEE80211_ELEMID_HTCAP:
 			ies->htcap_ie = ie;
@@ -1243,6 +1257,8 @@ node_cleanup(struct ieee80211_node *ni)
 		IEEE80211_NOTE(vap, IEEE80211_MSG_POWER, ni,
 		    "power save mode off, %u sta's in ps mode", vap->iv_ps_sta);
 	}
+	/* Advertised HE data must not survive a node's association cleanup. */
+	ni->ni_ies.hecap_ie = NULL;
 	/*
 	 * Cleanup any VHT and HT-related state.
 	 */
