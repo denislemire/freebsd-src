@@ -39,6 +39,10 @@ static bool rtw_vht_support = false;
 module_param_named(support_vht, rtw_vht_support, bool, 0644);
 MODULE_PARM_DESC(support_vht, "Set to Y to enable VHT support");
 
+static bool rtw_he_support = false;
+module_param_named(support_he, rtw_he_support, bool, 0644);
+MODULE_PARM_DESC(support_he, "Set to Y to enable HE support");
+
 static bool rtw_eht_support = false;
 module_param_named(support_eht, rtw_eht_support, bool, 0644);
 MODULE_PARM_DESC(support_eht, "Set to Y to enable EHT support");
@@ -5542,6 +5546,11 @@ static int rtw89_init_he_eht_cap(struct rtw89_dev *rtwdev,
 	enum nl80211_iftype iftype;
 	int idx = 0;
 
+#if defined(__FreeBSD__)
+	if (!rtw_he_support && !rtw_eht_support)
+		return (0);
+#endif
+
 	iftype_data = devm_kcalloc(rtwdev->dev, RTW89_SBAND_IFTYPES_NR,
 				   sizeof(*iftype_data), GFP_KERNEL);
 	if (!iftype_data)
@@ -5564,7 +5573,13 @@ static int rtw89_init_he_eht_cap(struct rtw89_dev *rtwdev,
 		iftype_data[idx].types_mask = BIT(iftype);
 
 		rtw89_init_he_cap(rtwdev, band, iftype, &iftype_data[idx]);
+#if defined(__FreeBSD__)
+		if (rtw_eht_support)
+			rtw89_init_eht_cap(rtwdev, band, iftype,
+			    &iftype_data[idx]);
+#else
 		rtw89_init_eht_cap(rtwdev, band, iftype, &iftype_data[idx]);
+#endif
 
 		idx++;
 	}
@@ -5613,15 +5628,9 @@ static int rtw89_core_set_supported_band(struct rtw89_dev *rtwdev)
 		if (rtw_ht_support)
 #endif
 		rtw89_init_ht_cap(rtwdev, &sband->ht_cap);
-#if defined(__FreeBSD__)
-		if (rtw_eht_support) {
-#endif
 		ret = rtw89_init_he_eht_cap(rtwdev, NL80211_BAND_2GHZ, sband);
 		if (ret)
 			return ret;
-#if defined(__FreeBSD__)
-		}
-#endif
 		hw->wiphy->bands[NL80211_BAND_2GHZ] = sband;
 	}
 
@@ -5637,15 +5646,9 @@ static int rtw89_core_set_supported_band(struct rtw89_dev *rtwdev)
 		if (rtw_vht_support)
 #endif
 		rtw89_init_vht_cap(rtwdev, &sband->vht_cap);
-#if defined(__FreeBSD__)
-		if (rtw_eht_support) {
-#endif
 		ret = rtw89_init_he_eht_cap(rtwdev, NL80211_BAND_5GHZ, sband);
 		if (ret)
 			return ret;
-#if defined(__FreeBSD__)
-		}
-#endif
 		hw->wiphy->bands[NL80211_BAND_5GHZ] = sband;
 	}
 
