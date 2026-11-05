@@ -2080,6 +2080,15 @@ lkpi_iv_key_update_begin(struct ieee80211vap *vap)
 	if (ntislocked)
 		IEEE80211_NODE_UNLOCK(nt);
 
+	/*
+	 * Finish packets queued before this update, including EAPOL sent
+	 * immediately before installing a replacement pairwise key.  Drain
+	 * before taking wiphy: the transmit task needs that lock to finish.
+	 * Node cleanup on the taskqueue itself cannot wait for that thread.
+	 */
+	if (!taskqueue_member(taskqueue_thread, curthread))
+		taskqueue_drain_all(taskqueue_thread);
+
 	wiphy_lock(hw->wiphy);
 
 	KASSERT(lvif->key_update_iv_bss == NULL, ("%s: key_update_iv_bss not NULL %p",
@@ -4597,9 +4606,10 @@ lkpi_ic_vap_create(struct ieee80211com *ic, const char name[IFNAMSIZ],
 	if (lkpi_hwcrypto && lhw->ops->set_key != NULL) {
 		vap->iv_key_set = lkpi_iv_key_set;
 		vap->iv_key_delete = lkpi_iv_key_delete;
-		vap->iv_key_update_begin = lkpi_iv_key_update_begin;
-		vap->iv_key_update_end = lkpi_iv_key_update_end;
 	}
+	/* Software encryption also shares mutable native key state. */
+	vap->iv_key_update_begin = lkpi_iv_key_update_begin;
+	vap->iv_key_update_end = lkpi_iv_key_update_end;
 #endif
 
 #ifdef LKPI_80211_HT
@@ -6115,6 +6125,12 @@ lkpi_80211_txq_tx_one(struct lkpi_sta *lsta, struct mbuf *m)
 #endif
 
 	ni = lsta->ni;
+	ic = ni->ni_ic;
+	lhw = ic->ic_softc;
+	hw = LHW_TO_HW(lhw);
+
+	/* Serialize native key use with the complete key-update bracket. */
+	wiphy_lock(hw->wiphy);
 	ieee80211_output_seqno_assign(ni, -1, m);
 
 	k = NULL;
@@ -6135,6 +6151,7 @@ lkpi_80211_txq_tx_one(struct lkpi_sta *lsta, struct mbuf *m)
 			/* Retrieve key for TX && do software encryption. */
 			k = ieee80211_crypto_encap(ni, m);
 			if (k == NULL) {
+				wiphy_unlock(hw->wiphy);
 				ieee80211_free_node(ni);
 				m_freem(m);
 				return;
@@ -6142,9 +6159,6 @@ lkpi_80211_txq_tx_one(struct lkpi_sta *lsta, struct mbuf *m)
 		}
 	}
 
-	ic = ni->ni_ic;
-	lhw = ic->ic_softc;
-	hw = LHW_TO_HW(lhw);
 	c = ni->ni_chan;
 
 	if (ieee80211_radiotap_active_vap(ni->ni_vap)) {
@@ -6197,6 +6211,7 @@ lkpi_80211_txq_tx_one(struct lkpi_sta *lsta, struct mbuf *m)
 				    tid, ltxq, ltxq->flags, LKPI_TXQ_FLAGS_BITS, skb_queue_len(&ltxq->skbq));
 			}
 		}
+		wiphy_unlock(hw->wiphy);
 		ieee80211_free_node(ni);
 		m_freem(m);
 		return;
@@ -6287,6 +6302,7 @@ lkpi_80211_txq_tx_one(struct lkpi_sta *lsta, struct mbuf *m)
 			 * We only have to free the skb which will free the
 			 * mbuf and release the reference on the ni.
 			 */
+			wiphy_unlock(hw->wiphy);
 			dev_kfree_skb(skb);
 			return;
 		}
@@ -6298,6 +6314,12 @@ lkpi_80211_txq_tx_one(struct lkpi_sta *lsta, struct mbuf *m)
 	IMPROVE();
 
 	ltxq = NULL;
+	/*
+	 * Submit control-port frames before a subsequent key update can
+	 * retire the key referenced by the prepared skb.
+	 */
+	if ((m->m_flags & M_EAPOL) != 0)
+		goto ops_tx;
 	if (!ieee80211_is_data_present(hdr->frame_control)) {
 		if (vif->type == NL80211_IFTYPE_STATION &&
 		    lsta->added_to_drv &&
@@ -6328,7 +6350,6 @@ lkpi_80211_txq_tx_one(struct lkpi_sta *lsta, struct mbuf *m)
 		    ltxq->txq.tid, ac, skb->priority, skb->qmap);
 #endif
 	LKPI_80211_LTXQ_UNLOCK(ltxq);
-	wiphy_lock(hw->wiphy);
 	lkpi_80211_mo_wake_tx_queue(hw, &ltxq->txq, true);
 	wiphy_unlock(hw->wiphy);
 	return;
@@ -6344,7 +6365,6 @@ ops_tx:
 	memset(&control, 0, sizeof(control));
 	if (lsta->added_to_drv)
 		control.sta = sta;
-	wiphy_lock(hw->wiphy);
 	lkpi_80211_mo_tx(hw, &control, skb);
 	lsta->frms_tx++;
 	wiphy_unlock(hw->wiphy);
