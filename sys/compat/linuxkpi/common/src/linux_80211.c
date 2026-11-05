@@ -9098,6 +9098,62 @@ inval:
 	return (0);
 }
 
+static uint32_t
+lkpi_cfg80211_calculate_bitrate_he(struct rate_info *rate)
+{
+	/* Six times the coded bits per data subcarrier for HE MCS0..11. */
+	static const uint8_t bits_per_tone[12] = {
+		3, 6, 9, 12, 18, 24, 27, 30, 36, 40, 45, 50
+	};
+	static const uint16_t ru_data_tones[7] = {
+		24, 48, 102, 234, 468, 980, 1960
+	};
+	static const uint16_t symbol_duration[3] = { 136, 144, 160 };
+	uint32_t numerator, denominator, tones;
+
+	if (rate->mcs > 11 || rate->nss == 0 || rate->nss > 8 ||
+	    rate->he_gi > NL80211_RATE_INFO_HE_GI_3_2 || rate->he_dcm > 1)
+		return (0);
+	if (rate->he_dcm != 0 && (rate->nss > 2 ||
+	    (rate->mcs != 0 && rate->mcs != 1 && rate->mcs != 3 &&
+	    rate->mcs != 4)))
+		return (0);
+
+	switch (rate->bw) {
+	case RATE_INFO_BW_20:
+		tones = 234;
+		break;
+	case RATE_INFO_BW_40:
+		tones = 468;
+		break;
+	case RATE_INFO_BW_80:
+		tones = 980;
+		break;
+	case RATE_INFO_BW_160:
+		tones = 1960;
+		break;
+	case RATE_INFO_BW_HE_RU:
+		if (rate->he_ru_alloc > NL80211_RATE_INFO_HE_RU_ALLOC_2x996)
+			return (0);
+		tones = ru_data_tones[rate->he_ru_alloc];
+		break;
+	default:
+		return (0);
+	}
+
+	/*
+	 * The useful HE symbol is 12.8us; add 0.8, 1.6 or 3.2us GI.
+	 * Durations are in tenths of a microsecond. Convert coded bits per
+	 * symbol to 100Kbit/s, rounding once after NSS and optional DCM.
+	 * The largest numerator is 1960 * 50 * 8 * 100 = 78400000.
+	 */
+	numerator = tones * bits_per_tone[rate->mcs] * rate->nss * 100;
+	denominator = 6 * symbol_duration[rate->he_gi];
+	if (rate->he_dcm != 0)
+		denominator *= 2;
+	return ((numerator + denominator / 2) / denominator);
+}
+
 uint32_t
 linuxkpi_cfg80211_calculate_bitrate(struct rate_info *rate)
 {
@@ -9109,7 +9165,10 @@ linuxkpi_cfg80211_calculate_bitrate(struct rate_info *rate)
 	if (rate->flags & RATE_INFO_FLAGS_VHT_MCS)
 		return (lkpi_cfg80211_calculate_bitrate_vht(rate));
 
-	IMPROVE("HE/EHT/...");
+	if (rate->flags & RATE_INFO_FLAGS_HE_MCS)
+		return (lkpi_cfg80211_calculate_bitrate_he(rate));
+
+	IMPROVE("EHT/...");
 
 	return (rate->legacy);
 }
