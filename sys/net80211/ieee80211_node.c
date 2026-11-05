@@ -1270,6 +1270,7 @@ node_cleanup(struct ieee80211_node *ni)
 		IEEE80211_NOTE(vap, IEEE80211_MSG_POWER, ni,
 		    "power save mode off, %u sta's in ps mode", vap->iv_ps_sta);
 	}
+	ieee80211_he_node_cleanup(ni);
 	/* Advertised HE data must not survive a node's association cleanup. */
 	ni->ni_ies.hecap_ie = NULL;
 	ni->ni_ies.heoper_ie = NULL;
@@ -1347,6 +1348,7 @@ node_free(struct ieee80211_node *ni)
 
 	ieee80211_ratectl_node_deinit(ni);
 	ic->ic_node_cleanup(ni);
+	ieee80211_he_node_free(ni);
 	ieee80211_ies_cleanup(&ni->ni_ies);
 	ieee80211_psq_cleanup(&ni->ni_psq);
 	IEEE80211_FREE(ni, M_80211_NODE);

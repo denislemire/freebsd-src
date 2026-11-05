@@ -210,6 +210,7 @@ struct ieee80211_node {
 #define	IEEE80211_NODE_VHT	0x100000	/* VHT enabled */
 #define	IEEE80211_NODE_LDPC	0x200000	/* LDPC enabled */
 #define	IEEE80211_NODE_UAPSD	0x400000	/* U-APSD power save enabled */
+#define	IEEE80211_NODE_HE	0x800000	/* HE negotiated */
 	uint16_t		ni_associd;	/* association ID */
 	uint16_t		ni_vlan;	/* vlan tag */
 	uint16_t		ni_txpower;	/* current transmit power */
@@ -325,7 +326,11 @@ struct ieee80211_node {
 
 	void			*ni_drv_data;	/* driver specific */
 
-	uint64_t		ni_spare[3];
+	union {
+		struct ieee80211_he_state *ni_he;
+		uint64_t	ni_he_spare;
+	};
+	uint64_t		ni_spare[2];
 };
 MALLOC_DECLARE(M_80211_NODE);
 MALLOC_DECLARE(M_80211_NODE_IE);

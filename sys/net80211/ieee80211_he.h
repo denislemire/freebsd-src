@@ -55,6 +55,25 @@ int	ieee80211_parse_heoper(const uint8_t *, size_t,
 	    struct ieee80211_he_operation *);
 
 #ifdef _KERNEL
+#include <sys/lock.h>
+#include <sys/mutex.h>
+#endif
+
+#define	IEEE80211_HE_CAP_IE_MAX	57
+
+struct ieee80211_he_state {
+	struct net80211_he_cap local;
+	struct net80211_he_cap peer;
+	struct ieee80211_he_operation oper;
+	uint16_t freq;
+	bool advertised;
+	bool negotiated;
+#ifdef _KERNEL
+	struct mtx lock;
+#endif
+};
+
+#ifdef _KERNEL
 struct ieee80211vap;
 struct ieee80211_channel;
 struct ieee80211_node;
@@ -64,6 +83,18 @@ int	ieee80211_get_hecap(struct ieee80211vap *,
 	    const struct ieee80211_channel *, struct net80211_he_cap *);
 int	ieee80211_he_prepare_peer(struct ieee80211_node *,
 	    struct net80211_he_cap *, struct ieee80211_he_operation *);
+int	ieee80211_he_update_operation(struct ieee80211_node *,
+	    const uint8_t *, size_t);
+int	ieee80211_he_get_state(struct ieee80211_node *,
+	    struct ieee80211_he_state *);
+bool	ieee80211_he_was_advertised(struct ieee80211_node *);
+void	ieee80211_he_request_advertised(struct ieee80211_node *);
+void	ieee80211_he_node_free(struct ieee80211_node *);
+void	ieee80211_he_node_cleanup(struct ieee80211_node *);
+int	ieee80211_he_prepare_request(struct ieee80211_node *, uint8_t *,
+	    size_t, size_t *);
+int	ieee80211_he_accept_response(struct ieee80211_node *,
+	    const uint8_t *, size_t, const uint8_t *, size_t);
 #endif
 
 #endif /* _NET80211_IEEE80211_HE_H_ */

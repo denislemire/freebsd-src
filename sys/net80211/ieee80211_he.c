@@ -30,6 +30,7 @@
 #include <sys/errno.h>
 #ifdef _KERNEL
 #include <sys/systm.h>
+#include <sys/malloc.h>
 #include <sys/endian.h>
 #include <sys/socket.h>
 
@@ -268,6 +269,8 @@ ieee80211_he_mcs_supports_basic(uint16_t supported, uint16_t basic)
 }
 
 #ifdef _KERNEL
+CTASSERT(offsetof(struct ieee80211_node, ni_spare) -
+    offsetof(struct ieee80211_node, ni_he) == sizeof(uint64_t));
 CTASSERT(offsetof(struct ieee80211com, ic_spare) -
     offsetof(struct ieee80211com, ic_get_hecap) == sizeof(uint64_t));
 
@@ -373,6 +376,273 @@ ieee80211_he_prepare_peer(struct ieee80211_node *ni,
 fail:
 	memset(peer, 0, sizeof(*peer));
 	memset(oper, 0, sizeof(*oper));
+	return (error);
+}
+static void
+he_state_reset(struct ieee80211_he_state *state)
+{
+
+	memset(&state->local, 0, sizeof(state->local));
+	memset(&state->peer, 0, sizeof(state->peer));
+	memset(&state->oper, 0, sizeof(state->oper));
+	state->freq = 0;
+	state->advertised = state->negotiated = false;
+}
+
+void
+ieee80211_he_node_cleanup(struct ieee80211_node *ni)
+{
+
+	ni->ni_flags &= ~IEEE80211_NODE_HE;
+	if (ni->ni_he != NULL) {
+		mtx_lock(&ni->ni_he->lock);
+		he_state_reset(ni->ni_he);
+		mtx_unlock(&ni->ni_he->lock);
+	}
+}
+
+/* Keep storage across association cleanup; free it on final node release. */
+void
+ieee80211_he_node_free(struct ieee80211_node *ni)
+{
+
+	if (ni->ni_he != NULL) {
+		mtx_destroy(&ni->ni_he->lock);
+		IEEE80211_FREE(ni->ni_he, M_80211_NODE);
+		ni->ni_he = NULL;
+	}
+}
+
+int
+ieee80211_he_get_state(struct ieee80211_node *ni,
+    struct ieee80211_he_state *out)
+{
+	struct ieee80211_he_state *state;
+	int error;
+
+	memset(out, 0, sizeof(*out));
+	state = ni->ni_he;
+	if (state == NULL)
+		return (ENOENT);
+	mtx_lock(&state->lock);
+	error = ENOENT;
+	if ((ni->ni_flags & IEEE80211_NODE_HE) && state->negotiated) {
+		out->local = state->local;
+		out->peer = state->peer;
+		out->oper = state->oper;
+		out->freq = state->freq;
+		out->advertised = state->advertised;
+		out->negotiated = state->negotiated;
+		error = 0;
+	}
+	mtx_unlock(&state->lock);
+	return (error);
+}
+
+bool
+ieee80211_he_was_advertised(struct ieee80211_node *ni)
+{
+	bool advertised;
+
+	if (ni->ni_he == NULL)
+		return (false);
+	mtx_lock(&ni->ni_he->lock);
+	advertised = ni->ni_he->advertised;
+	mtx_unlock(&ni->ni_he->lock);
+	return (advertised);
+}
+
+void
+ieee80211_he_request_advertised(struct ieee80211_node *ni)
+{
+
+	KASSERT(ni->ni_he != NULL, ("HE request without prepared state"));
+	mtx_lock(&ni->ni_he->lock);
+	ni->ni_he->advertised = true;
+	mtx_unlock(&ni->ni_he->lock);
+}
+
+/* Initial native policy: no host HTC, TWT, BSR, OMI or OPS procedures. */
+static void
+he_sta_policy(struct net80211_he_cap *cap)
+{
+	uint8_t *mac;
+
+	mac = cap->he_cap_elem.mac_cap_info;
+	mac[0] = 0;
+	/* Retain the hardware's required trigger processing padding. */
+	mac[1] &= IEEE80211_HE_MAC_CAP1_TF_MAC_PAD_DUR_MASK;
+	mac[2] = 0;
+	mac[3] = 0;
+	mac[4] &= IEEE80211_HE_MAC_CAP4_AMSDU_IN_AMPDU;
+	mac[5] &= IEEE80211_HE_MAC_CAP5_HT_VHT_TRIG_FRAME_RX;
+	cap->he_cap_elem.phy_cap_info[0] &=
+	    IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G;
+	cap->he_mcs_nss_supp.rx_mcs_160 = 0xffff;
+	cap->he_mcs_nss_supp.tx_mcs_160 = 0xffff;
+	cap->he_mcs_nss_supp.rx_mcs_80p80 = 0xffff;
+	cap->he_mcs_nss_supp.tx_mcs_80p80 = 0xffff;
+}
+
+int
+ieee80211_he_prepare_request(struct ieee80211_node *ni, uint8_t *ie,
+    size_t len, size_t *written)
+{
+	struct net80211_he_cap local, peer;
+	struct ieee80211_he_operation oper;
+	struct ieee80211_he_state *state;
+	uint8_t encoded[IEEE80211_HE_CAP_IE_MAX];
+	size_t n;
+	int error;
+
+	if (written == NULL)
+		return (EINVAL);
+	*written = 0;
+	if (ni == NULL || ni->ni_vap == NULL || ie == NULL)
+		return (EINVAL);
+	ieee80211_he_node_cleanup(ni);
+	if (!(ni->ni_vap->iv_flags_ext & IEEE80211_FEXT_HE) ||
+	    !(ni->ni_vap->iv_flags_ht & IEEE80211_FHT_HT) ||
+	    !(ni->ni_vap->iv_vht_flags & IEEE80211_FVHT_VHT) ||
+	    ni->ni_ies.wme_ie == NULL || ni->ni_ies.htcap_ie == NULL ||
+	    ni->ni_ies.vhtcap_ie == NULL)
+		return (ENOTSUP);
+	/* Require a valid HE AP and compatible basic MCS before advertising. */
+	error = ieee80211_he_prepare_peer(ni, &peer, &oper);
+	if (error != 0)
+		return (error);
+	error = ieee80211_get_hecap(ni->ni_vap, ni->ni_chan, &local);
+	if (error != 0)
+		return (error);
+	if (IEEE80211_IS_CHAN_VHT160(ni->ni_chan) ||
+	    IEEE80211_IS_CHAN_VHT80P80(ni->ni_chan))
+		return (ENOTSUP);
+	he_sta_policy(&local);
+	error = ieee80211_encode_hecap(&local, encoded, sizeof(encoded), &n);
+	if (error != 0)
+		return (error);
+	if (n > len)
+		return (EMSGSIZE);
+	state = ni->ni_he;
+	if (state == NULL) {
+		state = IEEE80211_MALLOC(sizeof(*state), M_80211_NODE,
+		    IEEE80211_M_NOWAIT | IEEE80211_M_ZERO);
+		if (state == NULL)
+			return (ENOMEM);
+		mtx_init(&state->lock, "80211 HE state", NULL, MTX_DEF);
+		ni->ni_he = state;
+	}
+	mtx_lock(&state->lock);
+	state->local = local;
+	state->freq = ni->ni_chan->ic_freq;
+	mtx_unlock(&state->lock);
+	memcpy(ie, encoded, n);
+	*written = n;
+	return (0);
+}
+
+int
+ieee80211_he_accept_response(struct ieee80211_node *ni,
+    const uint8_t *cap_ie, size_t cap_len, const uint8_t *oper_ie,
+    size_t oper_len)
+{
+	struct ieee80211_he_state *state;
+	struct net80211_he_cap peer;
+	struct ieee80211_he_operation oper;
+	uint16_t rx, tx, basic;
+	int error;
+
+	ni->ni_flags &= ~IEEE80211_NODE_HE;
+	state = ni->ni_he;
+	if (state == NULL)
+		return (0);
+	mtx_lock(&state->lock);
+	error = 0;
+	if (!state->advertised)
+		goto out;
+	state->negotiated = false;
+	memset(&state->peer, 0, sizeof(state->peer));
+	memset(&state->oper, 0, sizeof(state->oper));
+	if (cap_ie == NULL && oper_ie == NULL) {
+		he_state_reset(state);
+		goto out;
+	}
+	if (ni->ni_chan == NULL || ni->ni_chan == IEEE80211_CHAN_ANYC ||
+	    ni->ni_chan->ic_freq != state->freq ||
+	    !(ni->ni_flags & IEEE80211_NODE_QOS) ||
+	    !(ni->ni_flags & IEEE80211_NODE_HT) ||
+	    !(ni->ni_flags & IEEE80211_NODE_VHT)) {
+		error = EINVAL;
+		goto out;
+	}
+	error = ieee80211_parse_hecap(cap_ie, cap_len, &peer);
+	if (error != 0)
+		goto out;
+	error = ieee80211_parse_heoper(oper_ie, oper_len, &oper);
+	if (error != 0)
+		goto out;
+	rx = ieee80211_he_mcs_intersect(
+	    le16toh(state->local.he_mcs_nss_supp.tx_mcs_80),
+	    le16toh(peer.he_mcs_nss_supp.rx_mcs_80));
+	tx = ieee80211_he_mcs_intersect(
+	    le16toh(peer.he_mcs_nss_supp.tx_mcs_80),
+	    le16toh(state->local.he_mcs_nss_supp.rx_mcs_80));
+	basic = le16toh(oper.he_mcs_nss_set);
+	if ((rx & 3) == IEEE80211_HE_MCS_NOT_SUPPORTED ||
+	    (tx & 3) == IEEE80211_HE_MCS_NOT_SUPPORTED ||
+	    !ieee80211_he_mcs_supports_basic(rx, basic) ||
+	    !ieee80211_he_mcs_supports_basic(tx, basic)) {
+		error = ENOTSUP;
+		goto out;
+	}
+	peer.he_mcs_nss_supp.rx_mcs_80 = htole16(rx);
+	peer.he_mcs_nss_supp.tx_mcs_80 = htole16(tx);
+	peer.he_cap_elem.phy_cap_info[0] &=
+	    IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G;
+	peer.he_mcs_nss_supp.rx_mcs_160 = 0xffff;
+	peer.he_mcs_nss_supp.tx_mcs_160 = 0xffff;
+	peer.he_mcs_nss_supp.rx_mcs_80p80 = 0xffff;
+	peer.he_mcs_nss_supp.tx_mcs_80p80 = 0xffff;
+	state->peer = peer;
+	state->oper = oper;
+	state->negotiated = true;
+	ni->ni_flags |= IEEE80211_NODE_HE;
+	error = 0;
+out:
+	mtx_unlock(&state->lock);
+	return (error);
+}
+int
+ieee80211_he_update_operation(struct ieee80211_node *ni,
+    const uint8_t *ie, size_t len)
+{
+	struct ieee80211_he_operation oper;
+	struct ieee80211_he_state *state;
+	uint16_t basic;
+	int error;
+
+	state = ni->ni_he;
+	if (state == NULL)
+		return (0);
+	mtx_lock(&state->lock);
+	error = 0;
+	if (!state->negotiated)
+		goto out;
+	error = ieee80211_parse_heoper(ie, len, &oper);
+	if (error != 0)
+		goto out;
+	basic = le16toh(oper.he_mcs_nss_set);
+	if (!ieee80211_he_mcs_supports_basic(
+	    le16toh(state->peer.he_mcs_nss_supp.rx_mcs_80), basic) ||
+	    !ieee80211_he_mcs_supports_basic(
+	    le16toh(state->peer.he_mcs_nss_supp.tx_mcs_80), basic)) {
+		error = ENOTSUP;
+		goto out;
+	}
+	state->oper = oper;
+	error = 0;
+out:
+	mtx_unlock(&state->lock);
 	return (error);
 }
 #endif
