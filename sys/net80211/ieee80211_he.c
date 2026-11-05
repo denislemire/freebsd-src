@@ -135,3 +135,39 @@ ieee80211_he_mcs_intersect(uint16_t tx, uint16_t rx)
 	}
 	return (result);
 }
+
+int
+ieee80211_parse_heoper(const uint8_t *ie, size_t len,
+    struct ieee80211_he_operation *out)
+{
+	size_t ie_len, needed;
+	uint32_t params;
+
+	if (out == NULL)
+		return (EINVAL);
+	memset(out, 0, sizeof(*out));
+	if (ie == NULL)
+		return (EINVAL);
+	if (len < 3)
+		return (EMSGSIZE);
+	if (ie[0] != IEEE80211_ELEMID_EXTFIELD ||
+	    ie[2] != IEEE80211_ELEMID_EXT_HE_OPER)
+		return (EINVAL);
+	ie_len = (size_t)ie[1] + 2;
+	needed = 3 + sizeof(*out);
+	if (ie_len > len || ie_len < needed)
+		return (EMSGSIZE);
+	params = (uint32_t)ie[3] | ((uint32_t)ie[4] << 8) |
+	    ((uint32_t)ie[5] << 16);
+	/* Optional field flags/lengths match the native ifconfig HE decoder. */
+	if (params & (1U << 14))
+		needed += 3;	/* VHT operation information */
+	if (params & (1U << 15))
+		needed += 1;	/* Max Co-Hosted BSSID Indicator */
+	if (params & (1U << 17))
+		needed += 5;	/* 6 GHz operation information */
+	if (ie_len < needed)
+		return (EMSGSIZE);
+	memcpy(out, ie + 3, sizeof(*out));
+	return (0);
+}

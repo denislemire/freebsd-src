@@ -41,4 +41,8 @@ int	ieee80211_parse_hecap(const uint8_t *, size_t,
 /* Host-order maps; pair local TX with peer RX, or peer TX with local RX. */
 uint16_t ieee80211_he_mcs_intersect(uint16_t, uint16_t);
 
+/* Validate optional fields; return fixed fields in wire order. */
+int	ieee80211_parse_heoper(const uint8_t *, size_t,
+	    struct ieee80211_he_operation *);
+
 #endif /* _NET80211_IEEE80211_HE_H_ */
