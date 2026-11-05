@@ -118,6 +118,7 @@
  * e.g. device-specific callbacks.
  */
 struct ieee80211vap;
+struct net80211_he_cap;
 typedef void (*ieee80211vap_attach)(struct ieee80211vap *);
 
 struct ieee80211_appie {
@@ -404,7 +405,14 @@ struct ieee80211com {
 	void			(*ic_update_chw)(struct ieee80211com *);
 
 	const struct debugnet80211_methods	*ic_debugnet_meth;
-	uint64_t		ic_spare[7];
+	/* Retain the reserved slot's width on 32-bit targets. */
+	union {
+		int		(*ic_get_hecap)(struct ieee80211vap *,
+				    const struct ieee80211_channel *,
+				    struct net80211_he_cap *);
+		uint64_t	ic_he_spare;
+	};
+	uint64_t		ic_spare[6];
 };
 
 struct ieee80211_aclator;

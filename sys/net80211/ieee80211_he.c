@@ -30,6 +30,13 @@
 #include <sys/errno.h>
 #ifdef _KERNEL
 #include <sys/systm.h>
+#include <sys/endian.h>
+#include <sys/socket.h>
+
+#include <net/if.h>
+#include <net/if_var.h>
+#include <net/if_media.h>
+#include <net/ethernet.h>
 #else
 #include <stdbool.h>
 #include <stdint.h>
@@ -37,6 +44,9 @@
 #endif
 
 #include <net80211/ieee80211.h>
+#ifdef _KERNEL
+#include <net80211/ieee80211_var.h>
+#endif
 #include <net80211/ieee80211_he.h>
 
 int
@@ -171,3 +181,130 @@ ieee80211_parse_heoper(const uint8_t *ie, size_t len,
 	memcpy(out, ie + 3, sizeof(*out));
 	return (0);
 }
+
+bool
+ieee80211_he_mcs_supports_basic(uint16_t supported, uint16_t basic)
+{
+	unsigned int i, have, need;
+
+	for (i = 0; i < 8; i++) {
+		need = (basic >> (2 * i)) & 3;
+		/* In a basic set, 3 means this NSS is not required. */
+		if (need == 3)
+			continue;
+		have = (supported >> (2 * i)) & 3;
+		if (have == IEEE80211_HE_MCS_NOT_SUPPORTED || have < need)
+			return (false);
+	}
+	return (true);
+}
+
+#ifdef _KERNEL
+CTASSERT(offsetof(struct ieee80211com, ic_spare) -
+    offsetof(struct ieee80211com, ic_get_hecap) == sizeof(uint64_t));
+
+int
+ieee80211_get_hecap(struct ieee80211vap *vap,
+    const struct ieee80211_channel *chan, struct net80211_he_cap *out)
+{
+	struct ieee80211com *ic;
+	int error;
+
+	if (out == NULL)
+		return (EINVAL);
+	memset(out, 0, sizeof(*out));
+	if (vap == NULL || vap->iv_ic == NULL || chan == NULL ||
+	    chan == IEEE80211_CHAN_ANYC)
+		return (EINVAL);
+	ic = vap->iv_ic;
+	if (ic->ic_get_hecap == NULL)
+		return (ENOTSUP);
+	error = ic->ic_get_hecap(vap, chan, out);
+	if (error == 0 && !out->has_he)
+		error = ENOTSUP;
+	if (error != 0)
+		memset(out, 0, sizeof(*out));
+	return (error);
+}
+
+static size_t
+he_ie_available(const struct ieee80211_ies *ies, const uint8_t *ie)
+{
+	uintptr_t offset;
+
+	if (ie == NULL || ies->data == NULL || ies->len <= 0 ||
+	    (uintptr_t)ie < (uintptr_t)ies->data)
+		return (0);
+	offset = (uintptr_t)ie - (uintptr_t)ies->data;
+	if (offset > (size_t)ies->len)
+		return (0);
+	return ((size_t)ies->len - offset);
+}
+
+/*
+ * Construct a 5 GHz station candidate, in the peer's RX/TX perspective.
+ * This validates metadata and rate constraints only.  It does not establish
+ * that HE was advertised or negotiated, and changes no node/driver flags.
+ */
+int
+ieee80211_he_prepare_peer(struct ieee80211_node *ni,
+    struct net80211_he_cap *peer, struct ieee80211_he_operation *oper)
+{
+	struct net80211_he_cap local;
+	uint16_t peer_rx, peer_tx, basic;
+	int error;
+
+	if (peer == NULL || oper == NULL)
+		return (EINVAL);
+	memset(peer, 0, sizeof(*peer));
+	memset(oper, 0, sizeof(*oper));
+	if (ni == NULL || ni->ni_vap == NULL || ni->ni_chan == NULL ||
+	    ni->ni_chan == IEEE80211_CHAN_ANYC)
+		return (EINVAL);
+	if (ni->ni_vap->iv_opmode != IEEE80211_M_STA ||
+	    !IEEE80211_IS_CHAN_5GHZ(ni->ni_chan))
+		return (ENOTSUP);
+	error = ieee80211_get_hecap(ni->ni_vap, ni->ni_chan, &local);
+	if (error != 0)
+		return (error);
+	if (ni->ni_ies.hecap_ie == NULL || ni->ni_ies.heoper_ie == NULL)
+		return (ENOENT);
+	error = ieee80211_parse_hecap(ni->ni_ies.hecap_ie,
+	    he_ie_available(&ni->ni_ies, ni->ni_ies.hecap_ie), peer);
+	if (error != 0)
+		goto fail;
+	error = ieee80211_parse_heoper(ni->ni_ies.heoper_ie,
+	    he_ie_available(&ni->ni_ies, ni->ni_ies.heoper_ie), oper);
+	if (error != 0)
+		goto fail;
+	peer_rx = ieee80211_he_mcs_intersect(
+	    le16toh(local.he_mcs_nss_supp.tx_mcs_80),
+	    le16toh(peer->he_mcs_nss_supp.rx_mcs_80));
+	peer_tx = ieee80211_he_mcs_intersect(
+	    le16toh(peer->he_mcs_nss_supp.tx_mcs_80),
+	    le16toh(local.he_mcs_nss_supp.rx_mcs_80));
+	basic = le16toh(oper->he_mcs_nss_set);
+	if ((peer_rx & 3) == IEEE80211_HE_MCS_NOT_SUPPORTED ||
+	    (peer_tx & 3) == IEEE80211_HE_MCS_NOT_SUPPORTED ||
+	    !ieee80211_he_mcs_supports_basic(peer_rx, basic) ||
+	    !ieee80211_he_mcs_supports_basic(peer_tx, basic)) {
+		error = ENOTSUP;
+		goto fail;
+	}
+	peer->he_mcs_nss_supp.rx_mcs_80 = htole16(peer_rx);
+	peer->he_mcs_nss_supp.tx_mcs_80 = htole16(peer_tx);
+	/* Limit the initial candidate to bandwidths at or below 80 MHz. */
+	peer->he_cap_elem.phy_cap_info[0] &=
+	    ~(IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_160MHZ_IN_5G |
+	    IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_80PLUS80_MHZ_IN_5G);
+	peer->he_mcs_nss_supp.rx_mcs_160 = 0xffff;
+	peer->he_mcs_nss_supp.tx_mcs_160 = 0xffff;
+	peer->he_mcs_nss_supp.rx_mcs_80p80 = 0xffff;
+	peer->he_mcs_nss_supp.tx_mcs_80p80 = 0xffff;
+	return (0);
+fail:
+	memset(peer, 0, sizeof(*peer));
+	memset(oper, 0, sizeof(*oper));
+	return (error);
+}
+#endif

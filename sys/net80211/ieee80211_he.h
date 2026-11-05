@@ -40,9 +40,22 @@ int	ieee80211_parse_hecap(const uint8_t *, size_t,
 
 /* Host-order maps; pair local TX with peer RX, or peer TX with local RX. */
 uint16_t ieee80211_he_mcs_intersect(uint16_t, uint16_t);
+bool	ieee80211_he_mcs_supports_basic(uint16_t, uint16_t);
 
 /* Validate optional fields; return fixed fields in wire order. */
 int	ieee80211_parse_heoper(const uint8_t *, size_t,
 	    struct ieee80211_he_operation *);
+
+#ifdef _KERNEL
+struct ieee80211vap;
+struct ieee80211_channel;
+struct ieee80211_node;
+
+/* Hardware metadata only; a successful query does not enable HE operation. */
+int	ieee80211_get_hecap(struct ieee80211vap *,
+	    const struct ieee80211_channel *, struct net80211_he_cap *);
+int	ieee80211_he_prepare_peer(struct ieee80211_node *,
+	    struct net80211_he_cap *, struct ieee80211_he_operation *);
+#endif
 
 #endif /* _NET80211_IEEE80211_HE_H_ */

@@ -69,6 +69,7 @@
 #include <net80211/ieee80211_ratectl.h>
 #include <net80211/ieee80211_radiotap.h>
 #include <net80211/ieee80211_vht.h>
+#include <net80211/ieee80211_he.h>
 
 #define	LINUXKPI_NET80211
 #include <net/mac80211.h>
@@ -935,6 +936,16 @@ lkpi_sta_sync_from_ni(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 #if defined(LKPI_80211_VHT)
 	lkpi_sta_sync_vht_from_ni(hw, vif, sta, ni);
 #endif
+	/*
+	 * Validate the HE handoff passively while negotiation is disabled.
+	 * Do not copy this candidate into active driver state yet.
+	 */
+	if (ni->ni_ies.hecap_ie != NULL) {
+		struct net80211_he_cap he_candidate;
+		struct ieee80211_he_operation he_oper;
+
+		(void)ieee80211_he_prepare_peer(ni, &he_candidate, &he_oper);
+	}
 
 	/*
 	 * We are also called from node allocation which net80211
@@ -6991,6 +7002,50 @@ lkpi_ic_getradiocaps_ht(struct ieee80211com *ic, struct ieee80211_hw *hw,
 #endif
 }
 
+static int
+lkpi_ic_get_hecap(struct ieee80211vap *vap,
+    const struct ieee80211_channel *chan, struct net80211_he_cap *out)
+{
+	const struct ieee80211_sta_he_cap *cap;
+	struct ieee80211_supported_band *band;
+	struct lkpi_hw *lhw;
+	struct ieee80211_hw *hw;
+	uint8_t widths;
+
+	/* The first native path is 5 GHz station mode only. */
+	memset(out, 0, sizeof(*out));
+	if (vap->iv_opmode != IEEE80211_M_STA ||
+	    !IEEE80211_IS_CHAN_5GHZ(chan))
+		return (ENOTSUP);
+	lhw = vap->iv_ic->ic_softc;
+	if (lhw == NULL)
+		return (ENOTSUP);
+	hw = LHW_TO_HW(lhw);
+	band = hw->wiphy->bands[NL80211_BAND_5GHZ];
+	if (band == NULL)
+		return (ENOTSUP);
+	cap = ieee80211_get_he_iftype_cap(band, NL80211_IFTYPE_STATION);
+	if (cap == NULL)
+		return (ENOTSUP);
+	out->he_cap_elem = cap->he_cap_elem;
+	out->he_mcs_nss_supp = cap->he_mcs_nss_supp;
+	widths = out->he_cap_elem.phy_cap_info[0];
+	if (!(widths & IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_160MHZ_IN_5G)) {
+		out->he_mcs_nss_supp.rx_mcs_160 = 0xffff;
+		out->he_mcs_nss_supp.tx_mcs_160 = 0xffff;
+	}
+	if (!(widths &
+	    IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_80PLUS80_MHZ_IN_5G)) {
+		out->he_mcs_nss_supp.rx_mcs_80p80 = 0xffff;
+		out->he_mcs_nss_supp.tx_mcs_80p80 = 0xffff;
+	}
+	if (out->he_cap_elem.phy_cap_info[6] &
+	    IEEE80211_HE_PHY_CAP6_PPE_THRESHOLD_PRESENT)
+		memcpy(out->ppe_thres, cap->ppe_thres, sizeof(out->ppe_thres));
+	out->has_he = true;
+	return (0);
+}
+
 static void
 lkpi_ic_getradiocaps(struct ieee80211com *ic, int maxchan,
     int *n, struct ieee80211_channel *c)
@@ -7576,6 +7631,7 @@ linuxkpi_ieee80211_ifattach(struct ieee80211_hw *hw)
 	ic->ic_vap_create = lkpi_ic_vap_create;
 	ic->ic_vap_delete = lkpi_ic_vap_delete;
 	ic->ic_getradiocaps = lkpi_ic_getradiocaps;
+	ic->ic_get_hecap = lkpi_ic_get_hecap;
 	ic->ic_wme.wme_update = lkpi_ic_wme_update;
 
 	lhw->ic_scan_curchan = ic->ic_scan_curchan;
