@@ -633,6 +633,9 @@ ieee80211_parse_beacon(struct ieee80211_node *ni, struct mbuf *m,
 			    frm[2] == IEEE80211_ELEMID_EXT_HE_CAPA)
 				(void)ieee80211_parse_hecap(frm, frm[1] + 2,
 				    &scan->hecap);
+			if (frm[1] >= 1 &&
+			    frm[2] == IEEE80211_ELEMID_EXT_HE_OPER)
+				scan->heoper = frm;
 			break;
 		case IEEE80211_ELEMID_RSN:
 			scan->rsn = frm;

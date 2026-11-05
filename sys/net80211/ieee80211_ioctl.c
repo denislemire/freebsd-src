@@ -1200,6 +1200,9 @@ ieee80211_ioctl_get80211(struct ieee80211vap *vap, u_long cmd,
 		if (vap->iv_flags_ext & IEEE80211_FEXT_UAPSD)
 			ireq->i_val = 1;
 		break;
+	case IEEE80211_IOC_HECONF:
+		ireq->i_val = !!(vap->iv_flags_ext & IEEE80211_FEXT_HE);
+		break;
 	case IEEE80211_IOC_VHTCONF:
 		ireq->i_val = vap->iv_vht_flags & IEEE80211_FVHT_MASK;
 		break;
@@ -3612,6 +3615,21 @@ skip:
 			vap->iv_flags_ext |= IEEE80211_FEXT_UAPSD;
 		else
 			return EINVAL;
+		break;
+
+	case IEEE80211_IOC_HECONF:
+		if (ireq->i_val != 0 && ireq->i_val != 1)
+			return (EINVAL);
+		if (ireq->i_val != 0 && (vap->iv_opmode != IEEE80211_M_STA ||
+		    ic->ic_get_hecap == NULL))
+			return (EOPNOTSUPP);
+		if (!!(vap->iv_flags_ext & IEEE80211_FEXT_HE) == ireq->i_val)
+			break;
+		if (ireq->i_val != 0)
+			vap->iv_flags_ext |= IEEE80211_FEXT_HE;
+		else
+			vap->iv_flags_ext &= ~IEEE80211_FEXT_HE;
+		error = ENETRESET;
 		break;
 
 	/* VHT */

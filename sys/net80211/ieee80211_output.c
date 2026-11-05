@@ -50,6 +50,7 @@
 #include <net/if_vlan_var.h>
 
 #include <net80211/ieee80211_var.h>
+#include <net80211/ieee80211_he.h>
 #include <net80211/ieee80211_regdomain.h>
 #ifdef IEEE80211_SUPPORT_SUPERG
 #include <net80211/ieee80211_superg.h>
@@ -862,6 +863,7 @@ ieee80211_output(struct ifnet *ifp, struct mbuf *m,
 	IEEE80211_TX_LOCK(ic);
 	ret = ieee80211_raw_output(vap, ni, m, params);
 	IEEE80211_TX_UNLOCK(ic);
+	ieee80211_free_node(ni);
 	return (ret);
 bad:
 	if (m != NULL)
@@ -2700,6 +2702,8 @@ ieee80211_send_mgmt(struct ieee80211_node *ni, int type, int arg)
 	struct ieee80211_bpf_params params;
 	struct mbuf *m;
 	uint8_t *frm;
+	uint8_t he_ie[IEEE80211_HE_CAP_IE_MAX];
+	size_t he_len;
 	uint16_t capinfo;
 	int has_challenge, is_shared_key, ret, status;
 
@@ -2817,6 +2821,9 @@ ieee80211_send_mgmt(struct ieee80211_node *ni, int type, int arg)
 		 *	[tlv] Atheros capabilities (if negotiated)
 		 *	[tlv] AppIE's (optional)
 		 */
+		he_len = 0;
+		(void)ieee80211_he_prepare_request(ni, he_ie,
+		    sizeof(he_ie), &he_len);
 		m = ieee80211_getmgtframe(&frm,
 			 ic->ic_headroom + sizeof(struct ieee80211_frame),
 			 sizeof(uint16_t)
@@ -2830,6 +2837,7 @@ ieee80211_send_mgmt(struct ieee80211_node *ni, int type, int arg)
 		       + sizeof(struct ieee80211_wme_info)
 		       + sizeof(struct ieee80211_ie_htcap)
 		       + 2 + sizeof(struct ieee80211_vht_cap)
+		       + he_len
 		       + 4 + sizeof(struct ieee80211_ie_htcap)
 #ifdef IEEE80211_SUPPORT_SUPERG
 		       + sizeof(struct ieee80211_ath_ie)
@@ -2900,6 +2908,12 @@ ieee80211_send_mgmt(struct ieee80211_node *ni, int type, int arg)
 		    ni->ni_ies.vhtcap_ie != NULL &&
 		    ni->ni_ies.vhtcap_ie[0] == IEEE80211_ELEMID_VHT_CAP) {
 			frm = ieee80211_add_vhtcap(frm, ni);
+		}
+
+		if (he_len != 0) {
+			memcpy(frm, he_ie, he_len);
+			frm += he_len;
+			ieee80211_he_request_advertised(ni);
 		}
 
 		frm = ieee80211_add_wpa(frm, vap);
@@ -3049,8 +3063,16 @@ ieee80211_send_mgmt(struct ieee80211_node *ni, int type, int arg)
 	/* NB: we know all frames are unicast */
 	params.ibp_try0 = bss->ni_txparms->maxretry;
 	params.ibp_power = bss->ni_txpower;
-	return ieee80211_mgmt_output(ni, m, type, &params);
+	ieee80211_ref_node(ni);
+	ret = ieee80211_mgmt_output(ni, m, type, &params);
+	if (ret != 0 && (type == IEEE80211_FC0_SUBTYPE_ASSOC_REQ ||
+	    type == IEEE80211_FC0_SUBTYPE_REASSOC_REQ))
+		ieee80211_he_node_cleanup(ni);
+	return (ret);
 bad:
+	if (type == IEEE80211_FC0_SUBTYPE_ASSOC_REQ ||
+	    type == IEEE80211_FC0_SUBTYPE_REASSOC_REQ)
+		ieee80211_he_node_cleanup(ni);
 	ieee80211_free_node(ni);
 	return ret;
 #undef senderr

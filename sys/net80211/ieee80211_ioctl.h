@@ -722,6 +722,9 @@ struct ieee80211req {
 #define	IEEE80211_IOC_UAPSD		115	/* UAPSD (on, off) */
 #define	IEEE80211_IOC_UAPSD_INFO	116	/* UAPSD (SP, per-AC enable) */
 
+/* HE: initial station configuration, disabled by default. */
+#define	IEEE80211_IOC_HECONF		140	/* HE STA enable */
+
 /* VHT */
 #define	IEEE80211_IOC_VHTCONF		130	/* VHT config (off, on; widths) */
 

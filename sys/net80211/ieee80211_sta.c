@@ -54,6 +54,7 @@
 #include <net/bpf.h>
 
 #include <net80211/ieee80211_var.h>
+#include <net80211/ieee80211_he.h>
 #include <net80211/ieee80211_sta.h>
 #include <net80211/ieee80211_input.h>
 #ifdef IEEE80211_SUPPORT_SUPERG
@@ -1508,6 +1509,14 @@ sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0, int subtype,
 			if (scan.ath != NULL)
 				ieee80211_parse_athparams(ni, scan.ath, wh);
 #endif
+			if ((ni->ni_flags & IEEE80211_NODE_HE) &&
+			    scan.heoper != NULL &&
+			    ieee80211_he_update_operation(ni, scan.heoper,
+			    scan.heoper[1] + 2) == ENOTSUP) {
+				ieee80211_new_state(vap, IEEE80211_S_SCAN,
+				    IEEE80211_SCAN_FAIL_STATUS);
+				return;
+			}
 			if (scan.htcap != NULL && scan.htinfo != NULL &&
 			    (vap->iv_flags_ht & IEEE80211_FHT_HT)) {
 				/* XXX state changes? */
@@ -1742,6 +1751,9 @@ sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0, int subtype,
 	case IEEE80211_FC0_SUBTYPE_REASSOC_RESP: {
 		uint16_t capinfo, associd;
 		uint16_t status;
+		const uint8_t *hecap, *heoper;
+		size_t hecap_len, heoper_len;
+		bool he_bad;
 
 		if (vap->iv_state != IEEE80211_S_ASSOC) {
 			vap->iv_stats.is_rx_mgtdiscard++;
@@ -1766,6 +1778,7 @@ sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0, int subtype,
 		status = le16toh(*(uint16_t *)frm);
 		frm += 2;
 		if (status != IEEE80211_STATUS_SUCCESS) {
+			ieee80211_he_node_cleanup(ni);
 			/*
 			 * See ieee80211_tx_mgt_cb() for state handling.  This
 			 * essentially provokes a timeout bouncing us back to
@@ -1782,6 +1795,9 @@ sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0, int subtype,
 
 		rates = xrates = wme = htcap = htinfo = NULL;
 		vhtcap = vhtopmode = NULL;
+		hecap = heoper = NULL;
+		hecap_len = heoper_len = 0;
+		he_bad = false;
 		while (efrm - frm > 1) {
 			IEEE80211_VERIFY_LENGTH(efrm - frm, frm[1] + 2, return);
 			switch (*frm) {
@@ -1814,6 +1830,22 @@ sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0, int subtype,
 					}
 				}
 				/* XXX Atheros OUI support */
+				break;
+			case IEEE80211_ELEMID_EXTFIELD:
+				if (frm[1] < 1) {
+					he_bad = true;
+					break;
+				}
+				if (frm[2] == IEEE80211_ELEMID_EXT_HE_CAPA) {
+					he_bad |= hecap != NULL;
+					hecap = frm;
+					hecap_len = frm[1] + 2;
+				} else if (frm[2] ==
+				    IEEE80211_ELEMID_EXT_HE_OPER) {
+					he_bad |= heoper != NULL;
+					heoper = frm;
+					heoper_len = frm[1] + 2;
+				}
 				break;
 			case IEEE80211_ELEMID_VHT_CAP:
 				vhtcap = frm;
@@ -1890,6 +1922,15 @@ sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0, int subtype,
 
 			ieee80211_node_setuptxparms(ni);
 			ieee80211_ratectl_node_init(ni);
+		}
+
+		if ((he_bad && ieee80211_he_was_advertised(ni)) ||
+		    ieee80211_he_accept_response(ni, hecap,
+		    hecap_len, heoper, heoper_len) != 0) {
+			ieee80211_he_node_cleanup(ni);
+			ieee80211_new_state(vap, IEEE80211_S_SCAN,
+			    IEEE80211_SCAN_FAIL_STATUS);
+			return;
 		}
 
 		/*
