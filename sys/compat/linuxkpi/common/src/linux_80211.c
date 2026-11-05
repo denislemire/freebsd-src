@@ -8186,6 +8186,40 @@ lkpi_80211_lhw_rxq_task(void *ctx, int pending)
 }
 
 static void
+lkpi_convert_he_rx_stats(struct ieee80211_rx_status *rx_status,
+    struct ieee80211_rx_stats *rx_stats)
+{
+	static const uint8_t ru[] = {
+		IEEE80211_RX_HE_RU_26, IEEE80211_RX_HE_RU_52,
+		IEEE80211_RX_HE_RU_106, IEEE80211_RX_HE_RU_242,
+		IEEE80211_RX_HE_RU_484, IEEE80211_RX_HE_RU_996,
+		IEEE80211_RX_HE_RU_2x996
+	};
+
+	rx_stats->c_pktflags |= IEEE80211_RX_F_HE;
+	rx_stats->c_rate = rx_status->rate_idx;
+	rx_stats->c_henss = rx_status->nss;
+	rx_stats->c_hegi = IEEE80211_RX_HE_GI_UNKNOWN;
+	rx_stats->c_heru = IEEE80211_RX_HE_RU_UNKNOWN;
+	switch (rx_status->he_gi) {
+	case NL80211_RATE_INFO_HE_GI_0_8:
+		rx_stats->c_hegi = IEEE80211_RX_HE_GI_0_8;
+		break;
+	case NL80211_RATE_INFO_HE_GI_1_6:
+		rx_stats->c_hegi = IEEE80211_RX_HE_GI_1_6;
+		break;
+	case NL80211_RATE_INFO_HE_GI_3_2:
+		rx_stats->c_hegi = IEEE80211_RX_HE_GI_3_2;
+		break;
+	}
+	if (rx_status->he_dcm != 0)
+		rx_stats->c_pktflags |= IEEE80211_RX_F_HE_DCM;
+	if (rx_status->bw == RATE_INFO_BW_HE_RU &&
+	    rx_status->he_ru <= NL80211_RATE_INFO_HE_RU_ALLOC_2x996)
+		rx_stats->c_heru = ru[rx_status->he_ru];
+}
+
+static void
 lkpi_convert_rx_status(struct ieee80211_hw *hw, struct lkpi_sta *lsta,
     struct ieee80211_rx_status *rx_status,
     struct ieee80211_rx_stats *rx_stats,
@@ -8304,8 +8338,7 @@ lkpi_convert_rx_status(struct ieee80211_hw *hw, struct lkpi_sta *lsta,
 		rxrate.flags |= RATE_INFO_FLAGS_HE_MCS;
 		rxrate.mcs = rx_status->rate_idx;
 		rxrate.nss = rx_status->nss;
-		/* XXX TODO */
-		TODO("net80211 has not matching encoding for %u", rx_status->encoding);
+		lkpi_convert_he_rx_stats(rx_status, rx_stats);
 		break;
 	case RX_ENC_EHT:
 		rxrate.flags |= RATE_INFO_FLAGS_EHT_MCS;

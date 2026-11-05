@@ -602,6 +602,22 @@ struct ieee80211_mimo_info {
 #define	IEEE80211_RX_F_PN_VALIDATED	0x00010000 /* Decrypted; PN validated */
 #define	IEEE80211_RX_F_MIC_STRIP	0x00020000 /* Decrypted; MIC stripped */
 #define	IEEE80211_RX_F_ICV_STRIP	0x00040000 /* Decrypted: ICV (ic_trailer) stripped */
+#define	IEEE80211_RX_F_HE		0x00080000
+#define	IEEE80211_RX_F_HE_DCM		0x00100000
+
+/* HE guard interval and resource-unit metadata; valid with RX_F_HE. */
+#define	IEEE80211_RX_HE_GI_0_8		0
+#define	IEEE80211_RX_HE_GI_1_6		1
+#define	IEEE80211_RX_HE_GI_3_2		2
+#define	IEEE80211_RX_HE_GI_UNKNOWN	0xff
+#define	IEEE80211_RX_HE_RU_26		0
+#define	IEEE80211_RX_HE_RU_52		1
+#define	IEEE80211_RX_HE_RU_106		2
+#define	IEEE80211_RX_HE_RU_242		3
+#define	IEEE80211_RX_HE_RU_484		4
+#define	IEEE80211_RX_HE_RU_996		5
+#define	IEEE80211_RX_HE_RU_2x996		6
+#define	IEEE80211_RX_HE_RU_UNKNOWN	0xff
 
 /* Channel width */
 #define	IEEE80211_RX_FW_20MHZ		1
@@ -632,7 +648,7 @@ struct ieee80211_rx_stats {
 	int8_t c_nf;			/* global NF */
 	net80211_rssi_t c_rssi;			/* global RSSI */
 	uint8_t c_chain;		/* number of RX chains involved */
-	uint8_t c_rate;			/* legacy; 11n rate code; VHT MCS */
+	uint8_t c_rate;			/* legacy; HT/VHT/HE MCS */
 
 	/* 32 bits */
 	uint16_t c_freq;		/* Frequency, MHz */
@@ -651,8 +667,17 @@ struct ieee80211_rx_stats {
 
 	/* 32 bits */
 	uint8_t c_phytype;		/* PHY type, FW flags above */
-	uint8_t c_vhtnss;		/* VHT - number of spatial streams */
-	uint8_t c_pad2[2];
+	union {
+		uint8_t c_vhtnss;	/* VHT - number of spatial streams */
+		uint8_t c_henss;		/* HE spatial streams */
+	};
+	union {
+		uint8_t c_pad2[2];
+		struct {
+			uint8_t c_hegi;	/* IEEE80211_RX_HE_GI_* */
+			uint8_t c_heru;	/* IEEE80211_RX_HE_RU_* */
+		};
+	};
 };
 
 struct ieee80211_rx_params {
