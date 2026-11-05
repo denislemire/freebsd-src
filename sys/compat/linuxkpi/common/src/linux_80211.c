@@ -639,6 +639,22 @@ lkpi_sta_supp_rates(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	}
 #endif /* LKPI_80211_VHT */
 
+	/* HE rates are enabled only from the accepted peer's RX map. */
+	memset(lvif->br_mask.control[band].he_mcs, 0,
+	    sizeof(lvif->br_mask.control[band].he_mcs));
+	if (sta->deflink.he_cap.has_he) {
+		uint16_t map;
+		unsigned int nss, code;
+
+		map = le16toh(sta->deflink.he_cap.he_mcs_nss_supp.rx_mcs_80);
+		for (nss = 0; nss < 8; nss++) {
+			code = (map >> (2 * nss)) & 3;
+			if (code != IEEE80211_HE_MCS_NOT_SUPPORTED)
+				lvif->br_mask.control[band].he_mcs[nss] =
+				    (1U << (8 + 2 * code)) - 1;
+		}
+	}
+
 	return (bss_changed);
 }
 
@@ -904,6 +920,55 @@ skip_bw:
 #endif
 
 static enum ieee80211_bss_changed
+lkpi_sync_he_bss(struct ieee80211_vif *vif, struct ieee80211_node *ni)
+{
+	struct ieee80211_he_state snapshot, *state = &snapshot;
+	uint32_t params;
+	int color, enabled;
+	bool he;
+
+	he = ieee80211_he_get_state(ni, state) == 0;
+	params = he ? le32toh(state->oper.he_oper_params) : 0;
+	color = (params >> 24) & 63;
+	enabled = he && !(params & IEEE80211_HE_OPERATION_BSS_COLOR_DISABLED);
+	if (vif->bss_conf.he_support == he &&
+	    vif->bss_conf.he_oper.params == (params & 0xffffff) &&
+	    vif->bss_conf.he_bss_color.color == color &&
+	    vif->bss_conf.he_bss_color.enabled == enabled)
+		return (0);
+	vif->bss_conf.he_support = he;
+	vif->bss_conf.he_oper.params = params & 0xffffff;
+	vif->bss_conf.he_bss_color.color = color;
+	vif->bss_conf.he_bss_color.enabled = enabled;
+	vif->bss_conf.he_ldpc = he &&
+	    (state->peer.he_cap_elem.phy_cap_info[1] &
+	    IEEE80211_HE_PHY_CAP1_LDPC_CODING_IN_PAYLOAD) != 0;
+	return (BSS_CHANGED_HE_BSS_COLOR);
+}
+
+static void
+lkpi_sta_sync_he_from_ni(struct ieee80211_sta *sta,
+    struct ieee80211_node *ni)
+{
+	struct ieee80211_he_state snapshot, *state = &snapshot;
+	uint16_t rx;
+	unsigned int i;
+
+	memset(&sta->deflink.he_cap, 0, sizeof(sta->deflink.he_cap));
+	if (ieee80211_he_get_state(ni, state) != 0)
+		return;
+	sta->deflink.he_cap.he_cap_elem = state->peer.he_cap_elem;
+	sta->deflink.he_cap.he_mcs_nss_supp = state->peer.he_mcs_nss_supp;
+	memcpy(sta->deflink.he_cap.ppe_thres, state->peer.ppe_thres,
+	    sizeof(sta->deflink.he_cap.ppe_thres));
+	sta->deflink.he_cap.has_he = true;
+	rx = le16toh(state->peer.he_mcs_nss_supp.rx_mcs_80);
+	for (i = 0; i < 8; i++)
+		if (((rx >> (2 * i)) & 3) != IEEE80211_HE_MCS_NOT_SUPPORTED)
+			sta->deflink.rx_nss = i + 1;
+}
+
+static enum ieee80211_bss_changed
 lkpi_sta_sync_from_ni(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
     struct ieee80211_sta *sta, struct ieee80211_node *ni, bool updchnctx)
 {
@@ -936,16 +1001,9 @@ lkpi_sta_sync_from_ni(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 #if defined(LKPI_80211_VHT)
 	lkpi_sta_sync_vht_from_ni(hw, vif, sta, ni);
 #endif
-	/*
-	 * Validate the HE handoff passively while negotiation is disabled.
-	 * Do not copy this candidate into active driver state yet.
-	 */
-	if (ni->ni_ies.hecap_ie != NULL) {
-		struct net80211_he_cap he_candidate;
-		struct ieee80211_he_operation he_oper;
-
-		(void)ieee80211_he_prepare_peer(ni, &he_candidate, &he_oper);
-	}
+	lkpi_sta_sync_he_from_ni(sta, ni);
+	if (updchnctx)
+		bss_changed |= lkpi_sync_he_bss(vif, ni);
 
 	/*
 	 * We are also called from node allocation which net80211
@@ -2365,6 +2423,16 @@ lkpi_disassoc(struct ieee80211_sta *sta, struct ieee80211_vif *vif,
 	lockdep_assert_wiphy(hw->wiphy);
 
 	changed = 0;
+	if (vif->bss_conf.he_support || vif->bss_conf.he_oper.params != 0 ||
+	    vif->bss_conf.he_bss_color.color != 0 ||
+	    vif->bss_conf.he_bss_color.enabled)
+		changed |= BSS_CHANGED_HE_BSS_COLOR;
+	memset(&sta->deflink.he_cap, 0, sizeof(sta->deflink.he_cap));
+	vif->bss_conf.he_support = false;
+	vif->bss_conf.he_oper.params = 0;
+	vif->bss_conf.he_bss_color.color = 0;
+	vif->bss_conf.he_bss_color.enabled = 0;
+	vif->bss_conf.he_ldpc = false;
 	sta->aid = 0;
 	if (vif->cfg.assoc) {
 
@@ -4253,6 +4321,8 @@ lkpi_iv_sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 	 */
 	wiphy_lock(hw->wiphy);
 	bss_changed = lkpi_update_dtim_tsf(vif, ni, ni->ni_vap, __func__, __LINE__);
+	if (vif->cfg.assoc && ni == ni->ni_vap->iv_bss)
+		bss_changed |= lkpi_sync_he_bss(vif, ni);
 	lkpi_bss_info_change(hw, vif, bss_changed);
 	wiphy_unlock(hw->wiphy);
 }
@@ -8228,6 +8298,9 @@ lkpi_convert_rx_status(struct ieee80211_hw *hw, struct lkpi_sta *lsta,
 		}
 		break;
 	case RX_ENC_HE:
+		rxrate.he_gi = rx_status->he_gi;
+		rxrate.he_dcm = rx_status->he_dcm;
+		rxrate.he_ru_alloc = rx_status->he_ru;
 		rxrate.flags |= RATE_INFO_FLAGS_HE_MCS;
 		rxrate.mcs = rx_status->rate_idx;
 		rxrate.nss = rx_status->nss;
