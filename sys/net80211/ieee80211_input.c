@@ -48,6 +48,7 @@
 
 #include <net80211/ieee80211_var.h>
 #include <net80211/ieee80211_input.h>
+#include <net80211/ieee80211_he.h>
 #ifdef IEEE80211_SUPPORT_MESH
 #include <net80211/ieee80211_mesh.h>
 #endif
@@ -626,6 +627,12 @@ ieee80211_parse_beacon(struct ieee80211_node *ni, struct mbuf *m,
 			break;
 		case IEEE80211_ELEMID_VHT_OPMODE:
 			scan->vhtopmode = frm;
+			break;
+		case IEEE80211_ELEMID_EXTFIELD:
+			if (frm[1] >= 1 &&
+			    frm[2] == IEEE80211_ELEMID_EXT_HE_CAPA)
+				(void)ieee80211_parse_hecap(frm, frm[1] + 2,
+				    &scan->hecap);
 			break;
 		case IEEE80211_ELEMID_RSN:
 			scan->rsn = frm;

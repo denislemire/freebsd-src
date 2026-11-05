@@ -257,6 +257,7 @@ struct ieee80211_scanparams {
 	uint8_t		*vhtcap;
 	uint8_t		*vhtopmode;
 	uint8_t		*spare[1];
+	struct net80211_he_cap hecap;	/* owned parsed HE capabilities */
 };
 
 /*
