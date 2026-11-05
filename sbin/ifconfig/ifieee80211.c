@@ -126,6 +126,7 @@
 #define	IEEE80211_NODE_VHT	0x100000	/* VHT enabled */
 #define	IEEE80211_NODE_LDPC	0x200000	/* LDPC enabled */
 #define	IEEE80211_NODE_UAPSD	0x400000	/* UAPSD enabled */
+#define	IEEE80211_NODE_HE	0x800000	/* HE negotiated */
 #endif
 
 /* XXX should also figure out where to put these for k/u-space sharing. */
@@ -1973,6 +1974,13 @@ static void
 set80211rifs(if_ctx *ctx, const char *val __unused, int d)
 {
 	set80211(ctx, IEEE80211_IOC_RIFS, d, 0, NULL);
+}
+
+static void
+set80211heconf(if_ctx *ctx, const char *val __unused, int d)
+{
+
+	set80211(ctx, IEEE80211_IOC_HECONF, d, 0, NULL);
 }
 
 static void
@@ -4246,6 +4254,8 @@ list_stations(if_ctx *ctx)
 			);
 		printies(ctx, cp + si->isi_ie_off, si->isi_ie_len, 24);
 		printmimo(&si->isi_mimo);
+		if (si->isi_state & IEEE80211_NODE_HE)
+			printf(" HE");
 		printf("\n");
 		cp += si->isi_len, len -= si->isi_len;
 	} while (len >= (int)sizeof(struct ieee80211req_sta_info));
@@ -5740,6 +5750,13 @@ end:
 			LINE_CHECK("-vht");
 	}
 
+	if (get80211val(ctx, IEEE80211_IOC_HECONF, &val) != -1) {
+		if (val)
+			LINE_CHECK("he");
+		else if (verbose)
+			LINE_CHECK("-he");
+	}
+
 	if (get80211val(ctx, IEEE80211_IOC_WME, &wme) != -1) {
 		if (wme)
 			LINE_CHECK("wme");
@@ -6330,6 +6347,8 @@ static struct cmd ieee80211_cmds[] = {
 	DEF_CMD("-ht40",	0,	set80211htconf),
 	DEF_CMD("ht",		3,	set80211htconf),	/* NB: 20+40 */
 	DEF_CMD("-ht",		0,	set80211htconf),
+	DEF_CMD("he",		1,	set80211heconf),
+	DEF_CMD("-he",		0,	set80211heconf),
 	DEF_CMD("vht",		IEEE80211_FVHT_VHT,		set80211vhtconf),
 	DEF_CMD("-vht",		-IEEE80211_FVHT_VHT,		set80211vhtconf),
 	DEF_CMD("vht40",	IEEE80211_FVHT_USEVHT40,	set80211vhtconf),

@@ -28,7 +28,7 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.Dd September 10, 2026
+.Dd November 5, 2026
 .Dt IFCONFIG 8
 .Os
 .Sh NAME
@@ -1691,6 +1691,17 @@ By default, the SSID is included in beacon frames and
 undirected probe request frames are answered.
 To re-enable the broadcast of the SSID etc., use
 .Fl hidessid .
+.It Cm he
+Enable High Efficiency (802.11ax) negotiation in station mode when supported
+by the driver and channel.
+This is disabled by default.
+The status word
+.Li he
+reports configuration; use
+.Cm list sta
+to inspect negotiated HE state.
+.It Fl he
+Disable High Efficiency negotiation.
 .It Cm ht
 Enable use of High Throughput (HT) when using 802.11n (default).
 The 802.11n specification includes mechanisms for operation
@@ -1916,6 +1927,10 @@ Capabilities advertised by the stations are described under
 the
 .Cm scan
 request.
+An
+.Li HE
+tag following an entry indicates that High Efficiency operation was negotiated.
+The tag describes association state, not the rate of every transmitted frame.
 The following flags can be included in the output:
 .Bl -tag -width 3n
 .It Li A
