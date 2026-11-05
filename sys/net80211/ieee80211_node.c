@@ -1148,6 +1148,7 @@ void
 ieee80211_ies_cleanup(struct ieee80211_ies *ies)
 {
 	ies->hecap_ie = NULL;
+	ies->heoper_ie = NULL;
 	if (ies->data != NULL)
 		IEEE80211_FREE(ies->data, M_80211_NODE_IE);
 }
@@ -1161,10 +1162,12 @@ void
 ieee80211_ies_expand(struct ieee80211_ies *ies)
 {
 	struct net80211_he_cap hecap;
+	struct ieee80211_he_operation heoper;
 	uint8_t *ie;
 	int ielen;
 
 	ies->hecap_ie = NULL;
+	ies->heoper_ie = NULL;
 	ie = ies->data;
 	ielen = ies->len;
 	while (ielen > 1) {
@@ -1175,6 +1178,7 @@ ieee80211_ies_expand(struct ieee80211_ies *ies)
 			    __func__, ies, ies->data, ies->len,
 			    ie[0], ie[1], ielen);
 			ies->hecap_ie = NULL;
+			ies->heoper_ie = NULL;
 			return;
 		}
 		switch (ie[0]) {
@@ -1196,12 +1200,21 @@ ieee80211_ies_expand(struct ieee80211_ies *ies)
 			ies->rsn_ie = ie;
 			break;
 		case IEEE80211_ELEMID_EXTFIELD:
-			if (ie[1] >= 1 &&
-			    ie[2] == IEEE80211_ELEMID_EXT_HE_CAPA) {
+			if (ie[1] < 1)
+				break;
+			switch (ie[2]) {
+			case IEEE80211_ELEMID_EXT_HE_CAPA:
 				ies->hecap_ie = NULL;
 				if (ieee80211_parse_hecap(ie, ie[1] + 2,
 				    &hecap) == 0)
 					ies->hecap_ie = ie;
+				break;
+			case IEEE80211_ELEMID_EXT_HE_OPER:
+				ies->heoper_ie = NULL;
+				if (ieee80211_parse_heoper(ie, ie[1] + 2,
+				    &heoper) == 0)
+					ies->heoper_ie = ie;
+				break;
 			}
 			break;
 		case IEEE80211_ELEMID_HTCAP:
@@ -1259,6 +1272,7 @@ node_cleanup(struct ieee80211_node *ni)
 	}
 	/* Advertised HE data must not survive a node's association cleanup. */
 	ni->ni_ies.hecap_ie = NULL;
+	ni->ni_ies.heoper_ie = NULL;
 	/*
 	 * Cleanup any VHT and HT-related state.
 	 */
