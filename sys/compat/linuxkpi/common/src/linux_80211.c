@@ -6719,6 +6719,7 @@ lkpi_ic_addba_stop(struct ieee80211_node *ni, struct ieee80211_tx_ampdu *tap)
 	struct lkpi_sta *lsta;
 	struct ieee80211_sta *sta;
 	struct ieee80211_ampdu_params params = { };
+	bool icislocked;
 	int error;
 
 	ic = ni->ni_ic;
@@ -6751,11 +6752,15 @@ lkpi_ic_addba_stop(struct ieee80211_node *ni, struct ieee80211_tx_ampdu *tap)
 	params.tid = tap->txa_tid;
 	params.amsdu = false;
 
-	IEEE80211_UNLOCK(ic);
+	/* Receive-side DELBA handling need not hold the com lock. */
+	icislocked = IEEE80211_IS_LOCKED(ic);
+	if (icislocked)
+		IEEE80211_UNLOCK(ic);
 	wiphy_lock(hw->wiphy);
 	error = lkpi_80211_mo_ampdu_action(hw, vif, &params);
 	wiphy_unlock(hw->wiphy);
-	IEEE80211_LOCK(ic);
+	if (icislocked)
+		IEEE80211_LOCK(ic);
 	if (error != 0) {
 		ic_printf(ic, "%s: mo_ampdu_action returned %d. ni %p tap %p\n",
 		    __func__, error, ni, tap);
