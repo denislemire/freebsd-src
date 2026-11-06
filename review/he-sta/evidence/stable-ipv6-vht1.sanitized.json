@@ -1,0 +1,43 @@
+{
+  "branch": "STABLE",
+  "address_family": 6,
+  "he_enabled": false,
+  "kernel_sha256": "ce0b6c9ee6d601d1198f2bfabe8fc5c2583cbdca6d187a78cd9ebb2db6c6643c",
+  "radio_sha256": "691a925d85933330c813e96ba998f43882c92e02764eb490d82fa689d28d2419",
+  "hardware_crypto": true,
+  "witness": false,
+  "invariants": false,
+  "instrumentation": "light observers, redacting WPA monitor and rare aggregation-stop ownership observer",
+  "all_workers_passed": true,
+  "all_collectors_complete": true,
+  "guard_reassociation_requests": 0,
+  "timed_rollback_assistance": false,
+  "archive_sha256": "4f25547666588e7a846e156d00317e8d42095fd5d033466a0967186690376fe8",
+  "archive_independently_verified": true,
+  "observed_wpa_renewal_requests": 4,
+  "observed_timed_pairwise_replacements": 3,
+  "renewal_coverage_satisfied": true,
+  "mode_audit": "HE=0 legacy=2 total=2",
+  "lock_audit": "handoffs=10 owned_driver=4 unowned_driver=6 ownership_mismatches=0 incomplete_driver=0 malformed=0",
+  "real_ifconfig_setters": true,
+  "station_he_tag": false,
+  "rows": [
+    {
+      "cycle": 1,
+      "uplink_mbps": 160.44985016032823,
+      "downlink_mbps": 66.64006626499966,
+      "uplink_retransmits": 0,
+      "downlink_retransmits": 35,
+      "integrity_sha256": "b91592a43e04b92ffdb51989d1104e61f6072945291c1a4a27a9bce97abae378"
+    },
+    {
+      "cycle": 2,
+      "uplink_mbps": 112.29259204565379,
+      "downlink_mbps": 92.31742548924849,
+      "uplink_retransmits": 4093,
+      "downlink_retransmits": 474,
+      "integrity_sha256": "b91592a43e04b92ffdb51989d1104e61f6072945291c1a4a27a9bce97abae378"
+    }
+  ],
+  "limits": "Two bounded simultaneous bidirectional IPv6 intervals; fixed-order shared-RF comparison, not capacity certification. STABLE GENERIC without WITNESS/INVARIANTS. Four requests but only three completed timed replacements in VHT; no claim every request completed."
+}

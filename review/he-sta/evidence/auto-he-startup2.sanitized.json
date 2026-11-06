@@ -1,0 +1,57 @@
+{
+  "branch": "STABLE",
+  "base": "06e5b0422f3abf525472f6eb69677d7a32f4748f",
+  "normal_default_boot": false,
+  "automatic_he": true,
+  "no_manual_he_or_wpa_mutation": true,
+  "he_remains_enabled": true,
+  "kernel_sha256": "ce0b6c9ee6d601d1198f2bfabe8fc5c2583cbdca6d187a78cd9ebb2db6c6643c",
+  "radio_sha256": "691a925d85933330c813e96ba998f43882c92e02764eb490d82fa689d28d2419",
+  "witness": false,
+  "invariants": false,
+  "hardware_crypto": true,
+  "all_collectors_complete": true,
+  "all_workers_passed": true,
+  "fallback_intervention": false,
+  "archive_sha256": "f5ace853a02ff3b61b5db3c847f5d5cd2cf27db6c8b54054e0fce246f194b1dc",
+  "archive_independently_verified": true,
+  "cached_firmware_rate": {
+    "flags": 16,
+    "mcs": 11,
+    "nss": 2,
+    "width": 3,
+    "he_gi": 0,
+    "bitrate_100k": 5735
+  },
+  "rows": [
+    {
+      "address_family": 4,
+      "direction": "up",
+      "sender_mbps": 265.5829080967528,
+      "receiver_mbps": 265.0272719327452,
+      "retransmits": 745
+    },
+    {
+      "address_family": 4,
+      "direction": "down",
+      "sender_mbps": 147.87490876759128,
+      "receiver_mbps": 147.31354066330672,
+      "retransmits": 169
+    },
+    {
+      "address_family": 6,
+      "direction": "up",
+      "sender_mbps": 270.93631054717275,
+      "receiver_mbps": 270.0144957436863,
+      "retransmits": 329
+    },
+    {
+      "address_family": 6,
+      "direction": "down",
+      "sender_mbps": 181.67240116544974,
+      "receiver_mbps": 181.08463862635364,
+      "retransmits": 509
+    }
+  ],
+  "limits": "Single samples per family/direction in shared RF. Snapshot is the current station firmware-fed rate cache, not a new C2H report or per-packet encoding proof. Suspend/long-soak and other hardware remain unverified."
+}

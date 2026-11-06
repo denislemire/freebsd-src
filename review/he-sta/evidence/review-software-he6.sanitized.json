@@ -1,0 +1,71 @@
+{
+  "source_head": "247377f1b50386c87d95fc53ed315d99e57ddf17",
+  "base": "12f90bbd3029fedea93e9bb0b1f02c3afafe237b",
+  "branch": "CURRENT",
+  "address_family": 6,
+  "he_registration": 1,
+  "station_he": true,
+  "eht_registration": 0,
+  "hardware_crypto": false,
+  "witness": true,
+  "invariants": true,
+  "kernel_sha256": "f4652f8e63cddb44c1051805962b561239ff800778daf0215685d3df68faa8af",
+  "radio_sha256": "888f950817b2e5e0d11e68a487dfb2002df4fc0628b1cd8b1e34c9f7b98a4d07",
+  "all_collectors_complete": true,
+  "all_workers_passed": true,
+  "guard_reassociation_requests": 0,
+  "timed_rollback_assistance": false,
+  "archive_sha256": "a32b55200e0b0c0d3e747b0b01d20b9ff6703d8873ece6514213e737eb52a99c",
+  "archive_independently_verified": true,
+  "mode_audit": "HE=1 legacy=1 total=2",
+  "integrity_sha256": "b91592a43e04b92ffdb51989d1104e61f6072945291c1a4a27a9bce97abae378",
+  "rows": [
+    {
+      "interval": "1",
+      "sum_sent": {
+        "seconds": 119.999958,
+        "bits_per_second": 39068207.807206064,
+        "retransmits": 0
+      },
+      "sum_received": {
+        "seconds": 120.011837,
+        "bits_per_second": 39064340.76165337
+      },
+      "sum_sent_bidir_reverse": {
+        "seconds": 119.999958,
+        "bits_per_second": 17327724.46470356,
+        "retransmits": 0
+      },
+      "sum_received_bidir_reverse": {
+        "seconds": 120.011837,
+        "bits_per_second": 17308534.790614028
+      }
+    },
+    {
+      "interval": "2",
+      "sum_sent": {
+        "seconds": 120.000941,
+        "bits_per_second": 38237771.618807554,
+        "retransmits": 0
+      },
+      "sum_received": {
+        "seconds": 120.009518,
+        "bits_per_second": 38235038.7908399
+      },
+      "sum_sent_bidir_reverse": {
+        "seconds": 120.000941,
+        "bits_per_second": 16969321.8655677,
+        "retransmits": 0
+      },
+      "sum_received_bidir_reverse": {
+        "seconds": 120.009518,
+        "bits_per_second": 16968109.079481512
+      }
+    }
+  ],
+  "observed_wpa_renewal_requests": 4,
+  "observed_timed_completed_negotiations": 4,
+  "successful_pairwise_driver_installs": 0,
+  "renewal_coverage_satisfied": true,
+  "limits": "Bounded single-adapter/AP IPv6 control, not capacity or long-soak certification. Existing 16-series userland not rebuilt for refreshed main. HE helper positive live queued-packet discard coverage remains absent."
+}

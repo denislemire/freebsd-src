@@ -1,0 +1,35 @@
+{
+  "source_head": "247377f1b50386c87d95fc53ed315d99e57ddf17",
+  "base": "12f90bbd3029fedea93e9bb0b1f02c3afafe237b",
+  "branch": "CURRENT",
+  "address_family": 6,
+  "he_registration": 0,
+  "eht_registration": 0,
+  "station_he": 0,
+  "hardware_crypto": true,
+  "witness": true,
+  "invariants": true,
+  "kernel_sha256": "f4652f8e63cddb44c1051805962b561239ff800778daf0215685d3df68faa8af",
+  "radio_sha256": "888f950817b2e5e0d11e68a487dfb2002df4fc0628b1cd8b1e34c9f7b98a4d07",
+  "archive_sha256": "08020de42991b4e156603689d3aba6154826d7dbb06b30d89872b74b1fac2c10",
+  "archive_independently_verified": true,
+  "all_workers_passed": true,
+  "all_collectors_complete": true,
+  "guard_reassociation_requests": 0,
+  "timed_rollback_assistance": false,
+  "mode_audit": "HE=0 legacy=2 total=2",
+  "integrity_sha256": "b91592a43e04b92ffdb51989d1104e61f6072945291c1a4a27a9bce97abae378",
+  "rows": {
+    "uplink": {
+      "sender_mbps": 279.3928097768307,
+      "receiver_mbps": 278.586881381502,
+      "retransmits": 0
+    },
+    "downlink": {
+      "sender_mbps": 134.41905545093985,
+      "receiver_mbps": 134.6132290227831,
+      "retransmits": 6
+    }
+  },
+  "limits": "Single bounded default-off VHT IPv6 control, not a sustained capacity/renewal test. HE left unset across candidate loader layers; effective compiled default verified after boot. Existing 16-series userland was not rebuilt for the new base."
+}

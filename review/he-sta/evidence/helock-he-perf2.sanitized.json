@@ -1,0 +1,58 @@
+{
+  "branch": "CURRENT",
+  "kernel_sha256": "d6e6b99050b596fb90787692eabce44763901720659cc52385fd120e8debe75d",
+  "radio_sha256": "953090125bcf0f830ebd9ef0be2d1c797e84574673198dd40613c0b5600cb26b",
+  "he_enabled": true,
+  "hardware_crypto": true,
+  "witness": true,
+  "invariants": true,
+  "instrumentation": "identical light mode/firmware/key/BA and rare stop-lock observers; no per-packet PCI probe",
+  "path": "laptop Wi-Fi to AP, wired gigabit LAN peer",
+  "all_workers_passed": true,
+  "all_collectors_complete": true,
+  "guard_reassociation_requests": 0,
+  "timed_rollback_assistance": false,
+  "archive_sha256": "39bac08742c6c186a51324329fac76325b235972b2b908c33afa7a7be6686fb6",
+  "archive_independently_verified": true,
+  "comparison_order": "VHT then HE; shared RF, not randomized",
+  "median_uplink_mbps": 324.1716708070788,
+  "median_downlink_mbps": 185.10015504120062,
+  "rows": [
+    {
+      "cycle": 1,
+      "uplink_mbps": 326.6746696996206,
+      "downlink_mbps": 158.14500848611962,
+      "uplink_retransmits": 50,
+      "downlink_retransmits": 24,
+      "integrity_sha256": "b91592a43e04b92ffdb51989d1104e61f6072945291c1a4a27a9bce97abae378"
+    },
+    {
+      "cycle": 2,
+      "uplink_mbps": 324.76259996981287,
+      "downlink_mbps": 184.18285327541852,
+      "uplink_retransmits": 44,
+      "downlink_retransmits": 31,
+      "integrity_sha256": "b91592a43e04b92ffdb51989d1104e61f6072945291c1a4a27a9bce97abae378"
+    },
+    {
+      "cycle": 3,
+      "uplink_mbps": 307.534245630016,
+      "downlink_mbps": 186.01745680698272,
+      "uplink_retransmits": 36,
+      "downlink_retransmits": 11,
+      "integrity_sha256": "b91592a43e04b92ffdb51989d1104e61f6072945291c1a4a27a9bce97abae378"
+    },
+    {
+      "cycle": 4,
+      "uplink_mbps": 323.5807416443447,
+      "downlink_mbps": 190.431913441622,
+      "uplink_retransmits": 69,
+      "downlink_retransmits": 25,
+      "integrity_sha256": "b91592a43e04b92ffdb51989d1104e61f6072945291c1a4a27a9bce97abae378"
+    }
+  ],
+  "lock_handoffs": 4,
+  "unowned_lock_handoffs": 0,
+  "lock_ownership_mismatches": 0,
+  "mode_audit": "HE=1 legacy=1 total=2"
+}
