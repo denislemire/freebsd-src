@@ -4304,7 +4304,18 @@ lkpi_wme_update(struct lkpi_hw *lhw, struct ieee80211vap *vap, bool planned)
 	for (ac = 0; ac < IEEE80211_NUM_ACS; ac++) {
 		struct wmeParams *wmep;
 
-		wmep = &wmeparr[ac];
+		wmep = &wmeparr[WME_AC_BE];
+		switch (ac) {
+		case IEEE80211_AC_VO:
+			wmep = &wmeparr[WME_AC_VO];
+			break;
+		case IEEE80211_AC_VI:
+			wmep = &wmeparr[WME_AC_VI];
+			break;
+		case IEEE80211_AC_BK:
+			wmep = &wmeparr[WME_AC_BK];
+			break;
+		}
 		bzero(&txqp, sizeof(txqp));
 		txqp.cw_min = wmep->wmep_logcwmin;
 		txqp.cw_max = wmep->wmep_logcwmax;
