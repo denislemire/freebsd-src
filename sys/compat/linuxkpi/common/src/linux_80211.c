@@ -4317,8 +4317,8 @@ lkpi_wme_update(struct lkpi_hw *lhw, struct ieee80211vap *vap, bool planned)
 			break;
 		}
 		bzero(&txqp, sizeof(txqp));
-		txqp.cw_min = wmep->wmep_logcwmin;
-		txqp.cw_max = wmep->wmep_logcwmax;
+		txqp.cw_min = (1U << MIN(wmep->wmep_logcwmin, 15)) - 1;
+		txqp.cw_max = (1U << MIN(wmep->wmep_logcwmax, 15)) - 1;
 		txqp.txop = wmep->wmep_txopLimit;
 		txqp.aifs = wmep->wmep_aifsn;
 		error = lkpi_80211_mo_conf_tx(hw, vif, /* link_id */0, ac, &txqp);
