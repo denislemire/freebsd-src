@@ -863,7 +863,6 @@ ieee80211_output(struct ifnet *ifp, struct mbuf *m,
 	IEEE80211_TX_LOCK(ic);
 	ret = ieee80211_raw_output(vap, ni, m, params);
 	IEEE80211_TX_UNLOCK(ic);
-	ieee80211_free_node(ni);
 	return (ret);
 bad:
 	if (m != NULL)
@@ -3068,6 +3067,7 @@ ieee80211_send_mgmt(struct ieee80211_node *ni, int type, int arg)
 	if (ret != 0 && (type == IEEE80211_FC0_SUBTYPE_ASSOC_REQ ||
 	    type == IEEE80211_FC0_SUBTYPE_REASSOC_REQ))
 		ieee80211_he_node_cleanup(ni);
+	ieee80211_free_node(ni);
 	return (ret);
 bad:
 	if (type == IEEE80211_FC0_SUBTYPE_ASSOC_REQ ||
