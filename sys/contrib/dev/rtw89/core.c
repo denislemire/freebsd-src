@@ -46,6 +46,11 @@ MODULE_PARM_DESC(support_he, "Set to Y to enable HE support");
 static bool rtw_eht_support = false;
 module_param_named(support_eht, rtw_eht_support, bool, 0644);
 MODULE_PARM_DESC(support_eht, "Set to Y to enable EHT support");
+
+char rtw89_country[3];
+module_param_string(country, rtw89_country, sizeof(rtw89_country), 0644);
+MODULE_PARM_DESC(country,
+		 "ISO alpha2 used when the chip has no programmed country");
 #endif
 
 

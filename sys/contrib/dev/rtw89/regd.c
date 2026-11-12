@@ -711,6 +711,10 @@ int rtw89_regd_setup(struct rtw89_dev *rtwdev)
 	return 0;
 }
 
+#if defined(__FreeBSD__)
+extern char rtw89_country[3];
+#endif
+
 int rtw89_regd_init_hint(struct rtw89_dev *rtwdev)
 {
 	const struct rtw89_regd *chip_regd;
@@ -742,6 +746,31 @@ int rtw89_regd_init_hint(struct rtw89_dev *rtwdev)
 		rtw89_debug_regd(rtwdev, chip_regd, "efuse country code");
 		return 0;
 	}
+
+#if defined(__FreeBSD__)
+	if (rtw89_country[0] != '\0' && rtw89_country[1] != '\0') {
+		const struct rtw89_regd *fallback;
+		struct regulatory_request request = { 0 };
+
+		fallback = rtw89_regd_find_reg_by_name(rtwdev, rtw89_country);
+		if (!rtw89_regd_is_ww(fallback)) {
+			request.alpha2[0] = fallback->alpha2[0];
+			request.alpha2[1] = fallback->alpha2[1];
+			request.initiator = NL80211_REGDOM_SET_BY_USER;
+			/*
+			 * LinuxKPI's regulatory_hint() does not call
+			 * wiphy->reg_notifier, so apply the chosen regd through
+			 * the driver's normal notifier path (regd, policy and
+			 * txpwr).
+			 */
+			rtw89_regd_notifier(wiphy, &request);
+			rtw89_info(rtwdev,
+				   "efuse country unset; using rtw89_country %c%c\n",
+				   fallback->alpha2[0], fallback->alpha2[1]);
+			return 0;
+		}
+	}
+#endif
 
 	rtw89_debug_regd(rtwdev, rtwdev->regulatory.regd,
 			 "worldwide roaming chip, follow the setting of stack");
