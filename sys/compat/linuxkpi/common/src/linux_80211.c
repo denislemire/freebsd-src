@@ -7703,6 +7703,13 @@ linuxkpi_ieee80211_ifattach(struct ieee80211_hw *hw)
 		ic_printf(ic, "NOTE: rate control not supported by LinuxKPI; "
 		    "expect low rates only\n");
 
+	/*
+	 * Assign sequence numbers in the serialized final TX path before
+	 * encryption, not also during net80211 encapsulation. Allocating at
+	 * both stages consumes unused numbers in the peer's BA sequence space.
+	 */
+	ic->ic_flags_ext |= IEEE80211_FEXT_SEQNO_OFFLOAD;
+
 	/* Does HW support Fragmentation offload? */
 	if (ieee80211_hw_check(hw, SUPPORTS_TX_FRAG))
 		ic->ic_flags_ext |= IEEE80211_FEXT_FRAG_OFFLOAD;
